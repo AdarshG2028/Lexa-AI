@@ -159,3 +159,48 @@
     color: var(--color-foreground);
   }
 }
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+}
+
+@utility halo {
+  background-image: var(--gradient-halo);
+}
+
+@utility surface {
+  background-image: var(--gradient-ink);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-soft);
+}
+
+@utility glow {
+  box-shadow: var(--shadow-glow);
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.55; }
+  70% { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+@utility pulse-ring {
+  animation: pulse-ring 2.4s cubic-bezier(0.25, 0.6, 0.35, 1) infinite;
+}
+
+@keyframes bar-bounce {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+
+@utility bar-bounce {
+  animation: bar-bounce 1s ease-in-out infinite;
+}
