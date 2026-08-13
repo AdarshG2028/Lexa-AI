@@ -1,24 +1,49 @@
-# Fluent Talk
+# Lexa
 
-I am building a AI conversational assistant where it will have the conversation with the user and once the user ends the conversation , we show him grametical improvements in his talk and phonetic improvements. We will use both TTS and STT models.Build only the frontend- the landing page and conversation page and info page.
+An AI conversational assistant you practice speaking with. Have a real voice
+conversation, and when you hang up Lexa turns the transcript into a report of
+your grammar and pronunciation improvements. Speech-to-text and text-to-speech
+drive the call; this repository is the frontend — the landing page, the
+conversation page, and the insights report.
 
-This project was built with [Lovable](https://lovable.dev).
+## Stack
 
-## Build with Lovable
+- [TanStack Start](https://tanstack.com/start) (React 19, SSR) with TanStack Router and Query
+- [Vite](https://vite.dev) + [Tailwind CSS v4](https://tailwindcss.com)
+- [shadcn/ui](https://ui.shadcn.com) components on Radix primitives
+- [Nitro](https://nitro.build) for the production server build
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/2fd030a3-d9fc-4706-883a-4b87a3823873).
+## Getting started
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Requires [Bun](https://bun.sh).
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+bun install
+bun run dev
 ```
+
+The dev server runs on [http://localhost:8080](http://localhost:8080).
+
+## Scripts
+
+| Command            | Description                                     |
+| ------------------ | ----------------------------------------------- |
+| `bun run dev`      | Start the dev server with HMR                   |
+| `bun run build`    | Production build into `.output/`                |
+| `bun run preview`  | Serve the production build locally              |
+| `bun run lint`     | Lint with ESLint                                |
+| `bun run format`   | Format with Prettier                            |
+
+## Project layout
+
+```
+src/
+  routes/       file-based routes (__root, index, conversation, insights)
+  components/   shadcn/ui components
+  lib/          error capture + SSR error page, utilities
+  styles.css    design tokens and Tailwind theme
+  server.ts     SSR entry with error handling
+```
+
+`bun run build` targets Cloudflare by default. Set `NITRO_PRESET` (for example
+`NITRO_PRESET=vercel`) to build for another platform.
