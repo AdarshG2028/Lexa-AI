@@ -31,7 +31,7 @@ const scripted: Turn[] = [
 
 function Conversation() {
   const navigate = useNavigate();
-  const [turns, setTurns] = useState<Turn[]>([scripted[0]]);
+  const [turns, setTurns] = useState<Turn[]>(() => scripted.slice(0, 1));
   const [muted, setMuted] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -43,7 +43,7 @@ function Conversation() {
 
   useEffect(() => {
     if (turns.length >= scripted.length) return;
-    const t = setTimeout(() => setTurns((prev) => [...prev, scripted[prev.length]]), 3200);
+    const t = setTimeout(() => setTurns((prev) => scripted.slice(0, prev.length + 1)), 3200);
     return () => clearTimeout(t);
   }, [turns]);
 
@@ -51,8 +51,7 @@ function Conversation() {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
   }, [turns]);
 
-  const last = turns[turns.length - 1];
-  const lexaSpeaking = last.speaker === "lexa";
+  const lexaSpeaking = turns[turns.length - 1]?.speaker === "lexa";
   const clock = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
