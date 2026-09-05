@@ -7,6 +7,7 @@ SttProviderName = Literal["groq", "mock"]
 LlmProviderName = Literal["groq", "mock"]
 TtsProviderName = Literal["groq", "deepgram", "mock"]
 GrammarProviderName = Literal["groq", "mock"]
+VocabularyProviderName = Literal["groq", "mock"]
 
 
 class Settings(BaseSettings):
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     tts_provider: TtsProviderName = "mock"
 
     grammar_provider: GrammarProviderName = "mock"
+    vocabulary_provider: VocabularyProviderName = "mock"
 
     # Ordered comma-separated names tried when tts_provider fails, e.g. "groq,mock".
     tts_fallback_providers: str = ""
@@ -29,6 +31,7 @@ class Settings(BaseSettings):
     groq_llm_model: str = "openai/gpt-oss-120b"
     # Falls back to groq_llm_model when blank.
     groq_grammar_model: str = ""
+    groq_vocabulary_model: str = ""
     groq_tts_model: str = "canopylabs/orpheus-v1-english"
     groq_tts_voice: str = "troy"
     groq_tts_format: str = "wav"
@@ -74,7 +77,7 @@ class Settings(BaseSettings):
     def uses_groq(self) -> bool:
         return "groq" in {
             self.stt_provider, self.llm_provider, self.grammar_provider,
-            *self.tts_chain,
+            self.vocabulary_provider, *self.tts_chain,
         }
 
 

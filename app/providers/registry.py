@@ -5,6 +5,7 @@ from app.providers.base import (
     LLMProvider,
     SpeechToTextProvider,
     TextToSpeechProvider,
+    VocabularyAnalysisProvider,
 )
 from app.providers.deepgram.client import DeepgramClient
 from app.providers.deepgram.tts import DeepgramTextToSpeechProvider
@@ -14,10 +15,12 @@ from app.providers.groq.grammar import GroqGrammarAnalysisProvider
 from app.providers.groq.llm import GroqLLMProvider
 from app.providers.groq.stt import GroqSpeechToTextProvider
 from app.providers.groq.tts import GroqTextToSpeechProvider
+from app.providers.groq.vocabulary import GroqVocabularyAnalysisProvider
 from app.providers.mock.grammar import MockGrammarAnalysisProvider
 from app.providers.mock.llm import MockLLMProvider
 from app.providers.mock.stt import MockSpeechToTextProvider
 from app.providers.mock.tts import MockTextToSpeechProvider
+from app.providers.mock.vocabulary import MockVocabularyAnalysisProvider
 
 
 class ProviderRegistry:
@@ -62,6 +65,14 @@ class ProviderRegistry:
         if name == "mock":
             return MockGrammarAnalysisProvider()
         raise ConfigError(f"Unknown GRAMMAR_PROVIDER: {name!r}")
+
+    def vocabulary(self) -> VocabularyAnalysisProvider:
+        name = self._settings.vocabulary_provider
+        if name == "groq":
+            return GroqVocabularyAnalysisProvider(self._groq(), self._settings)
+        if name == "mock":
+            return MockVocabularyAnalysisProvider()
+        raise ConfigError(f"Unknown VOCABULARY_PROVIDER: {name!r}")
 
     def _one_text_to_speech(self, name: str) -> TextToSpeechProvider:
         if name == "groq":

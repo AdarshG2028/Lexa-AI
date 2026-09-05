@@ -1,6 +1,6 @@
 import asyncio
 
-from app.models import GrammarAnalysis
+from app.models import FluencyAnalysis, GrammarAnalysis, VocabularyAnalysis
 
 
 class InMemoryAnalysisRepository:
@@ -8,6 +8,8 @@ class InMemoryAnalysisRepository:
 
     def __init__(self) -> None:
         self._grammar: dict[str, GrammarAnalysis] = {}
+        self._vocabulary: dict[str, VocabularyAnalysis] = {}
+        self._fluency: dict[str, FluencyAnalysis] = {}
         self._lock = asyncio.Lock()
 
     async def save_grammar(self, analysis: GrammarAnalysis) -> GrammarAnalysis:
@@ -18,3 +20,23 @@ class InMemoryAnalysisRepository:
     async def get_grammar(self, session_id: str) -> GrammarAnalysis | None:
         async with self._lock:
             return self._grammar.get(session_id)
+
+    async def save_vocabulary(
+        self, analysis: VocabularyAnalysis
+    ) -> VocabularyAnalysis:
+        async with self._lock:
+            self._vocabulary[analysis.session_id] = analysis
+        return analysis
+
+    async def get_vocabulary(self, session_id: str) -> VocabularyAnalysis | None:
+        async with self._lock:
+            return self._vocabulary.get(session_id)
+
+    async def save_fluency(self, analysis: FluencyAnalysis) -> FluencyAnalysis:
+        async with self._lock:
+            self._fluency[analysis.session_id] = analysis
+        return analysis
+
+    async def get_fluency(self, session_id: str) -> FluencyAnalysis | None:
+        async with self._lock:
+            return self._fluency.get(session_id)

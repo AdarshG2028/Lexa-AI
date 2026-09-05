@@ -17,6 +17,7 @@ async def health(settings: SettingsDep) -> dict:
             "llm": settings.llm_provider,
             "tts": settings.tts_provider,
             "grammar": settings.grammar_provider,
+            "vocabulary": settings.vocabulary_provider,
         },
     }
 
@@ -31,6 +32,7 @@ async def provider_health(registry: RegistryDep, settings: SettingsDep) -> dict:
         "llm": registry.llm,
         "tts": registry.text_to_speech,
         "grammar": registry.grammar,
+        "vocabulary": registry.vocabulary,
     }
 
     results: dict = {}

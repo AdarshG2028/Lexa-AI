@@ -6,6 +6,7 @@ async def test_health_reports_configured_providers(client):
     assert body["status"] == "ok"
     assert body["providers"] == {
         "stt": "mock", "llm": "mock", "tts": "mock", "grammar": "mock",
+        "vocabulary": "mock",
     }
 
 

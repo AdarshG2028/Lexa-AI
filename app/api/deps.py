@@ -3,7 +3,9 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from app.analysis.fluency import FluencyAnalysisService
 from app.analysis.grammar import GrammarAnalysisService
+from app.analysis.vocabulary import VocabularyAnalysisService
 from app.analysis.repository import AnalysisRepository
 from app.config import Settings, get_settings
 from app.providers.registry import ProviderRegistry
@@ -41,6 +43,17 @@ def get_grammar_service(
     return GrammarAnalysisService(registry.grammar())
 
 
+def get_vocabulary_service(
+    registry: Annotated[ProviderRegistry, Depends(get_registry)],
+) -> VocabularyAnalysisService:
+    return VocabularyAnalysisService(registry.vocabulary())
+
+
+def get_fluency_service() -> FluencyAnalysisService:
+    """Fluency has no provider: it is measurement, not judgement."""
+    return FluencyAnalysisService()
+
+
 def get_conversation_service(
     settings: SettingsDep,
     registry: Annotated[ProviderRegistry, Depends(get_registry)],
@@ -62,6 +75,10 @@ ConversationServiceDep = Annotated[
 ]
 RegistryDep = Annotated[ProviderRegistry, Depends(get_registry)]
 GrammarServiceDep = Annotated[GrammarAnalysisService, Depends(get_grammar_service)]
+VocabularyServiceDep = Annotated[
+    VocabularyAnalysisService, Depends(get_vocabulary_service)
+]
+FluencyServiceDep = Annotated[FluencyAnalysisService, Depends(get_fluency_service)]
 AnalysisRepositoryDep = Annotated[
     AnalysisRepository, Depends(get_analysis_repository)
 ]

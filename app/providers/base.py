@@ -8,6 +8,8 @@ from app.models import (
     SynthesizedSpeech,
     Transcription,
     UserUtterance,
+    VocabularyIssue,
+    VocabularyObservation,
 )
 
 
@@ -49,6 +51,26 @@ class GrammarAnalysisProvider(Protocol):
     async def analyze(self, utterances: list[UserUtterance]) -> list[GrammarIssue]:
         """Finds grammar mistakes in what the user said. Must not alter the
         input; every issue carries its own copy of the original text."""
+        ...
+
+    async def check(self) -> ProviderCheck: ...
+
+
+@runtime_checkable
+class VocabularyAnalysisProvider(Protocol):
+    name: str
+
+    async def enrich(
+        self,
+        observations: list[VocabularyObservation],
+        utterances: list[UserUtterance],
+    ) -> list[VocabularyIssue]:
+        """Turns measured word-use observations into advice.
+
+        Counts arrive already measured and must be carried through unchanged;
+        the provider supplies alternatives and may add unnatural expressions
+        it notices, which are not countable in code.
+        """
         ...
 
     async def check(self) -> ProviderCheck: ...

@@ -7,11 +7,11 @@ communicate: grammar, vocabulary, fluency, and phoneme-level pronunciation.
 This repository contains the **backend and AI pipeline only**. There is no
 frontend; a future web or mobile client will consume these APIs.
 
-**Current status: Phase 4 complete.** You can hold a multi-turn spoken
+**Current status: Phase 6 complete.** You can hold a multi-turn spoken
 conversation, the AI remembers what was said earlier, the whole conversation is
 persisted and retrievable as a transcript, and the backend analyses the user's
-grammar afterwards. Vocabulary, fluency and pronunciation are not implemented
-yet.
+grammar, vocabulary and fluency afterwards. Phoneme-level pronunciation is not
+implemented yet.
 
 ---
 
@@ -80,6 +80,7 @@ The application depends on three `typing.Protocol` interfaces in
 |---|---|---|
 | `SpeechToTextProvider` | `GroqSpeechToTextProvider` | `MockSpeechToTextProvider` |
 | `GrammarAnalysisProvider` | `GroqGrammarAnalysisProvider` | `MockGrammarAnalysisProvider` (rule-based) |
+| `VocabularyAnalysisProvider` | `GroqVocabularyAnalysisProvider` | `MockVocabularyAnalysisProvider` (thesaurus) |
 | `LLMProvider` | `GroqLLMProvider` | `MockLLMProvider` |
 | `TextToSpeechProvider` | `GroqTextToSpeechProvider`, `DeepgramTextToSpeechProvider` | `MockTextToSpeechProvider` |
 
@@ -134,10 +135,20 @@ holds the tables, and `SqlSessionRepository` maps between them. Nothing above
 the repository knows a database exists.
 
 ```
-sessions   id, user_id, status, started_at, last_activity_at, ended_at
-turns      id, session_id, index, created_at, speaker, transcript,
-           assistant_response, and the audio reference columns
+sessions          id, user_id, status, started_at, last_activity_at, ended_at
+turns             id, session_id, index, created_at, speaker, transcript,
+                  assistant_response, and the audio reference columns
+turns.words       word timings as JSON, the basis of fluency analysis
+speech_analyses   one row per conversation, one nullable section per analysis
+grammar_issues    child rows
+vocabulary_issues child rows
+fluency_findings  child rows, queryable so Phase 9 can track recurring fillers
 ```
+
+A conversation has **one** analysis record made of independent sections.
+Saving grammar leaves vocabulary untouched and the other way round, so the two
+endpoints can be run in either order. Fluency and pronunciation add their own
+sections to that same row.
 
 Audio itself is **not** stored in the database. The rows hold the object key,
 format, duration and size; the bytes live behind `AudioStorage`, which writes
@@ -223,6 +234,85 @@ Analysis runs synchronously: a conversation's worth of text is one provider
 call. When audio models arrive in Phase 7, this is the endpoint that moves
 behind a background job.
 
+### Vocabulary analysis
+
+`POST /api/v1/sessions/{id}/analysis/vocabulary` reports repeated words and
+phrases, over-used basic words, and expressions that are grammatical but sound
+unnatural.
+
+**Counting happens in code, not in the model.** "You said 'very good' four
+times" is arithmetic, and a language model asked to count will sometimes get
+it wrong. So `app/analysis/vocabulary.py` measures the counts and the provider
+is asked only for the part that needs language sense: which word would have
+been better. Counts returned by the model are ignored entirely, and there is a
+test that proves a miscounting model cannot change the number shown.
+
+Detection details that matter in practice:
+
+- The repetition threshold **scales with conversation length**. Saying
+  "college" three times in eighty words is a habit; in eight hundred it is
+  just the topic.
+- Phrases are **trimmed to the words that carry meaning**, so a learner is
+  told about `very good` rather than `was very good`.
+- A phrase hides a word only when it accounts for every use of it -
+  `very good` x3 does not explain `good` x7.
+
+**Lexical diversity is reported but deliberately not scored.** Type-token
+ratio falls as any text gets longer, so scoring it would penalise a learner
+for talking more, which is the opposite of what this app wants.
+
+The score charges only *excess* repetition - using a word up to its threshold
+is normal speech. When excess reaches 15% of everything said, the score is
+zero.
+
+### Fluency analysis
+
+`POST /api/v1/sessions/{id}/analysis/fluency` measures **how** the user spoke
+rather than what they said: speaking rate, pauses, filler words, immediate
+repetitions and false starts.
+
+**This phase has no provider and never calls a language model.** Speaking rate
+and pause length are measurements, not opinions - a model asked for them would
+be guessing at numbers this code reads directly from the audio timings.
+
+It works because transcription requests word-level timestamps:
+
+```
+STT -> verbose_json + timestamp_granularities=word
+    -> [{word, start, end}, ...] stored on the turn
+    -> gaps between words are pauses, words per second is rate
+```
+
+Timings are **stored on the turn**, not recomputed. Fluency runs after the
+conversation, and re-transcribing later would spend another provider call on
+data already in hand.
+
+Details worth knowing:
+
+- A gap of 0.5 s counts as a pause, 1.0 s as a long one.
+- **Silence between turns is not blamed on the user** - that gap is the AI
+  speaking. Time is summed per turn, never across them.
+- Speaking rate and *articulation* rate are both reported. Articulation rate
+  excludes pause time, so it answers "how fast when actually talking".
+- The comfortable band is 110-160 WPM; outside it the score falls.
+- One false start trips two overlapping word pairs ("I want to, I want to"),
+  and is counted once.
+
+The score has four equally weighted parts - rate, pauses, fillers,
+disfluencies - each capped at 25 points, so no single habit can sink the score
+alone and the arithmetic stays explainable.
+
+**A text-only conversation returns `fluency_score: null`** with a note, rather
+than a fabricated number. Fluency cannot be measured from typed text, and
+guessing would be worse than saying so.
+
+Measured against three generated samples:
+
+| sample | score | WPM | long pauses | fillers | repetitions | restarts |
+|---|---|---|---|---|---|---|
+| `clean.wav` | 100 | 158.9 | 0 | 0 | 0 | 0 |
+| `hesitant.wav` | 19 | 83.9 | 3 | 7 | 1 | 1 |
+
 ### Project layout
 
 ```
@@ -236,6 +326,8 @@ app/
   conversation/prompts.py       the conversation-partner system prompt
   conversation/transcript.py    flattens turns into a speaker transcript
   analysis/grammar.py           collects user speech, scores, filters
+  analysis/vocabulary.py        counts repetition, scores, thresholds
+  analysis/fluency.py           rate, pauses, fillers - no model involved
   analysis/sql.py               analysis persistence
   db/models.py                  SQLAlchemy tables + UTC datetime handling
   db/engine.py                  engine, session factory, table creation
@@ -273,6 +365,8 @@ Then edit `.env`.
 | `STT_PROVIDER`, `LLM_PROVIDER` | `groq` or `mock` |
 | `TTS_PROVIDER` | `groq`, `deepgram` or `mock` |
 | `GRAMMAR_PROVIDER` | `groq` or `mock` (offline, rule-based) |
+| `VOCABULARY_PROVIDER` | `groq` or `mock` (offline, thesaurus) |
+| `GROQ_VOCABULARY_MODEL` | Blank uses `GROQ_LLM_MODEL` |
 | `GROQ_GRAMMAR_MODEL` | Blank uses `GROQ_LLM_MODEL` |
 | `TTS_FALLBACK_PROVIDERS` | Ordered fallbacks, e.g. `groq,mock` |
 | `DEEPGRAM_API_KEY`, `DEEPGRAM_TTS_MODEL` | Deepgram credentials and voice |
@@ -364,6 +458,10 @@ Codes: `INVALID_AUDIO`, `UNSUPPORTED_AUDIO_FORMAT`, `AUDIO_TOO_LARGE`,
 | `POST` | `/api/v1/sessions/{id}/end` | Mark the session completed (idempotent) |
 | `POST` | `/api/v1/sessions/{id}/analysis/grammar` | Run grammar analysis and store it |
 | `GET` | `/api/v1/sessions/{id}/analysis/grammar` | The stored grammar analysis |
+| `POST` | `/api/v1/sessions/{id}/analysis/vocabulary` | Run vocabulary analysis and store it |
+| `GET` | `/api/v1/sessions/{id}/analysis/vocabulary` | The stored vocabulary analysis |
+| `POST` | `/api/v1/sessions/{id}/analysis/fluency` | Run fluency analysis and store it |
+| `GET` | `/api/v1/sessions/{id}/analysis/fluency` | The stored fluency analysis |
 
 Supported upload formats: `flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm`.
 
@@ -522,11 +620,19 @@ A 45-60 second walkthrough, with the server running:
 | 2 | Contextual multi-turn conversation | **Complete** |
 | 3 | Database persistence and transcripts | **Complete** |
 | 4 | Grammar analysis | **Complete** |
-| 5 | Vocabulary analysis | Not started |
-| 6 | Fluency analysis | Not started |
+| 5 | Vocabulary analysis | **Complete** |
+| 6 | Fluency analysis | **Complete** |
 | 7 | Phoneme-level pronunciation | Not started |
 | 8 | Unified speech analysis report | Not started |
 | 9 | Cross-session progress tracking | Not started |
+
+### Known for Phase 8
+
+Grammar and vocabulary run independently and can both flag the same span. A
+wrong preposition such as "discuss about" is legitimately a grammar error and
+an unnatural expression, so it currently appears in both reports. The unified
+report in Phase 8 needs to deduplicate across sections rather than either
+section suppressing the other.
 
 ### Deferred, deliberately
 

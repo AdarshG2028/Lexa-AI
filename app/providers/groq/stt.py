@@ -1,6 +1,6 @@
 from app.config import Settings
 from app.core.errors import ProviderBadResponseError
-from app.models import ProviderCheck, Transcription
+from app.models import ProviderCheck, Transcription, WordTiming
 from app.providers.groq.client import GroqClient
 
 
@@ -16,7 +16,13 @@ class GroqSpeechToTextProvider:
     ) -> Transcription:
         response = await self._client.post(
             "/audio/transcriptions",
-            data={"model": self._model, "response_format": "verbose_json"},
+            data={
+                "model": self._model,
+                "response_format": "verbose_json",
+                # Word timings are what the fluency analysis is built on, and
+                # they cost nothing extra here.
+                "timestamp_granularities[]": "word",
+            },
             files={"file": (filename, audio, mime_type)},
         )
         try:
@@ -25,6 +31,7 @@ class GroqSpeechToTextProvider:
                 text=(body["text"] or "").strip(),
                 language=body.get("language"),
                 duration_seconds=body.get("duration"),
+                words=_word_timings(body.get("words")),
             )
         except (ValueError, KeyError, TypeError) as exc:
             raise ProviderBadResponseError(
@@ -43,3 +50,27 @@ class GroqSpeechToTextProvider:
                 "have been retired or may not be enabled for this API key."
             ),
         )
+
+
+def _word_timings(raw) -> list[WordTiming]:
+    """Reads word timings, skipping any entry that is not usable.
+
+    Timings are a bonus on top of the transcript: a malformed one should cost
+    the fluency detail, never the transcription itself.
+    """
+    if not isinstance(raw, list):
+        return []
+
+    words: list[WordTiming] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        try:
+            word = str(item["word"]).strip()
+            start = float(item["start"])
+            end = float(item["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if word and end >= start:
+            words.append(WordTiming(word=word, start=start, end=end))
+    return words

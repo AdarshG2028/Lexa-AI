@@ -1,14 +1,17 @@
 """Drive a whole conversation and print the grammar report.
 
 One command to exercise everything the backend does so far: sessions, context,
-persistence, transcripts and grammar analysis.
+persistence, transcripts, and grammar, vocabulary and fluency analysis.
+
+Fluency needs spoken audio, so pass --audio to see it scored.
 
     uv run python scripts/demo.py
     uv run python scripts/demo.py --audio samples/user_turn.wav
     uv run python scripts/demo.py --url http://127.0.0.1:8000
 
-The scripted lines contain deliberate mistakes (past tense, adverb form,
-subject-verb agreement, articles) so the analysis has something real to find.
+The scripted lines contain deliberate mistakes - wrong tense, adverb form,
+subject-verb agreement, articles, repeated phrases and redundant expressions -
+so both analyses have something real to find.
 """
 
 import argparse
@@ -24,6 +27,8 @@ SCRIPT = [
     "I go to college yesterday and it was very good.",
     "The teacher explained the lesson very good, so I am thinking about it.",
     "My friend he go to the same college and we ate a apple together.",
+    "The canteen food is very good and the library is very good also.",
+    "I will revert back to you after I discuss about the project.",
     "Do you remember what my name is and where I am from?",
 ]
 
@@ -163,10 +168,65 @@ def main() -> int:
     if not report["issues"]:
         print("\n  No grammar issues found.")
 
+    rule("VOCABULARY ANALYSIS")
+    try:
+        vocab = api.post_json(f"/api/v1/sessions/{session_id}/analysis/vocabulary")
+    except ApiError as exc:
+        print(f"Analysis failed: {exc.body}", file=sys.stderr)
+        return 1
+
+    print(f"provider           {vocab['provider']}")
+    print(f"vocabulary score   {vocab['vocabulary_score']}/100")
+    print(f"words analysed     {vocab['words_analyzed']}")
+    print(f"unique words       {vocab['unique_words']}")
+    print(f"lexical diversity  {vocab['lexical_diversity']}  (reported, not scored)")
+    print(f"findings           {vocab['issue_count']}")
+
+    for i, issue in enumerate(vocab["issues"], 1):
+        used = f" x{issue['occurrences']}" if issue["occurrences"] > 1 else ""
+        print(f"\n  {i}. [{issue['type']}] '{issue['text']}'{used}")
+        if issue["suggestions"]:
+            print(f"     try : {', '.join(issue['suggestions'])}")
+        print(f"     why : {issue['explanation']}")
+
+    if not vocab["issues"]:
+        print("\n  No vocabulary issues found.")
+
+    rule("FLUENCY ANALYSIS")
+    try:
+        flu = api.post_json(f"/api/v1/sessions/{session_id}/analysis/fluency")
+    except ApiError as exc:
+        print(f"Analysis failed: {exc.body}", file=sys.stderr)
+        return 1
+
+    if flu["fluency_score"] is None:
+        print(f"  not scored: {flu['note']}")
+    else:
+        print(f"fluency score      {flu['fluency_score']}/100")
+        print(f"speaking rate      {flu['speaking_rate_wpm']} WPM"
+              f"   (articulation {flu['articulation_rate_wpm']} WPM)")
+        print(f"speech analysed    {flu['analyzed_seconds']}s"
+              f" over {flu['timed_words']} words")
+        print(f"pauses             {flu['pause_count']}"
+              f"  ({flu['long_pause_count']} long,"
+              f" {flu['total_pause_seconds']}s total)")
+        print(f"fillers            {flu['filler_count']}")
+        print(f"repetitions        {flu['repetition_count']}")
+        print(f"false starts       {flu['restart_count']}")
+
+        for f in flu["findings"]:
+            print(f"\n  [{f['type']}] '{f['text']}' x{f['occurrences']}")
+            print(f"     {f['detail']}")
+
+        if not flu["findings"]:
+            print("\n  No fluency issues found.")
+
     rule("NEXT")
     print(f"  session id : {session_id}")
     print(f"  transcript : {args.url}/api/v1/sessions/{session_id}/transcript")
-    print(f"  analysis   : {args.url}/api/v1/sessions/{session_id}/analysis/grammar")
+    print(f"  grammar    : {args.url}/api/v1/sessions/{session_id}/analysis/grammar")
+    print(f"  vocabulary : {args.url}/api/v1/sessions/{session_id}/analysis/vocabulary")
+    print(f"  fluency    : {args.url}/api/v1/sessions/{session_id}/analysis/fluency")
     print(f"  api docs   : {args.url}/docs")
     return 0
 

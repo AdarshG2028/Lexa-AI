@@ -116,6 +116,7 @@ class ConversationService:
                 "No speech was detected in the audio. Try speaking louder or longer."
             )
         turn.transcript = transcription.text
+        turn.words = transcription.words
 
         return await self._complete_turn(session, turn, extra_timings={"stt": stt_ms})
 

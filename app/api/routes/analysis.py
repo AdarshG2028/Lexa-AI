@@ -4,9 +4,11 @@ from app.api.deps import (
     AnalysisRepositoryDep,
     ConversationServiceDep,
     GrammarServiceDep,
+    FluencyServiceDep,
+    VocabularyServiceDep,
 )
 from app.core.errors import AnalysisNotFoundError
-from app.models import GrammarAnalysis
+from app.models import FluencyAnalysis, GrammarAnalysis, VocabularyAnalysis
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["analysis"])
 
@@ -38,6 +40,59 @@ async def get_grammar_analysis(
     """The stored analysis, or 404 if it has not been run yet."""
     await conversation.get_session(session_id)
     analysis = await analyses.get_grammar(session_id)
+    if analysis is None:
+        raise AnalysisNotFoundError(session_id=session_id)
+    return analysis
+
+
+@router.post("/{session_id}/analysis/vocabulary", response_model=VocabularyAnalysis)
+async def run_vocabulary_analysis(
+    session_id: str,
+    conversation: ConversationServiceDep,
+    vocabulary: VocabularyServiceDep,
+    analyses: AnalysisRepositoryDep,
+) -> VocabularyAnalysis:
+    """Measures word use and asks the provider for better alternatives."""
+    session = await conversation.get_session(session_id)
+    analysis = await vocabulary.analyze(session)
+    return await analyses.save_vocabulary(analysis)
+
+
+@router.get("/{session_id}/analysis/vocabulary", response_model=VocabularyAnalysis)
+async def get_vocabulary_analysis(
+    session_id: str,
+    conversation: ConversationServiceDep,
+    analyses: AnalysisRepositoryDep,
+) -> VocabularyAnalysis:
+    await conversation.get_session(session_id)
+    analysis = await analyses.get_vocabulary(session_id)
+    if analysis is None:
+        raise AnalysisNotFoundError(session_id=session_id)
+    return analysis
+
+
+@router.post("/{session_id}/analysis/fluency", response_model=FluencyAnalysis)
+async def run_fluency_analysis(
+    session_id: str,
+    conversation: ConversationServiceDep,
+    fluency: FluencyServiceDep,
+    analyses: AnalysisRepositoryDep,
+) -> FluencyAnalysis:
+    """Measures speaking rate, pauses, fillers and false starts from the
+    word timings captured during transcription. No model is called."""
+    session = await conversation.get_session(session_id)
+    analysis = fluency.analyze(session)
+    return await analyses.save_fluency(analysis)
+
+
+@router.get("/{session_id}/analysis/fluency", response_model=FluencyAnalysis)
+async def get_fluency_analysis(
+    session_id: str,
+    conversation: ConversationServiceDep,
+    analyses: AnalysisRepositoryDep,
+) -> FluencyAnalysis:
+    await conversation.get_session(session_id)
+    analysis = await analyses.get_fluency(session_id)
     if analysis is None:
         raise AnalysisNotFoundError(session_id=session_id)
     return analysis

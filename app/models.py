@@ -33,6 +33,18 @@ class AudioRef(BaseModel):
     size_bytes: int | None = None
 
 
+class WordTiming(BaseModel):
+    """When one word was spoken. The basis of every fluency measurement."""
+
+    word: str
+    start: float
+    end: float
+
+    @property
+    def duration(self) -> float:
+        return max(0.0, self.end - self.start)
+
+
 class Turn(BaseModel):
     id: str = Field(default_factory=_new_id)
     index: int
@@ -42,6 +54,7 @@ class Turn(BaseModel):
     assistant_response: str | None = None
     user_audio: AudioRef | None = None
     assistant_audio: AudioRef | None = None
+    words: list[WordTiming] = Field(default_factory=list)
 
 
 class Session(BaseModel):
@@ -74,6 +87,7 @@ class Transcription(BaseModel):
     text: str
     language: str | None = None
     duration_seconds: float | None = None
+    words: list[WordTiming] = Field(default_factory=list)
 
 
 class ChatMessage(BaseModel):
@@ -141,6 +155,97 @@ class GrammarAnalysis(BaseModel):
     @property
     def issue_count(self) -> int:
         return len(self.issues)
+
+
+class VocabularyIssueType(str, Enum):
+    REPEATED_WORD = "repeated_word"
+    REPEATED_PHRASE = "repeated_phrase"
+    BASIC_WORD = "basic_word"
+    UNNATURAL_EXPRESSION = "unnatural_expression"
+
+
+class VocabularyObservation(BaseModel):
+    """A countable fact about word use, measured before any model is asked.
+
+    Counting is arithmetic, not judgement, so it is done in code. The provider
+    is only asked for the part that needs language sense: better alternatives.
+    """
+
+    type: VocabularyIssueType
+    text: str
+    occurrences: int
+    example: str
+
+
+class VocabularyIssue(BaseModel):
+    id: str = Field(default_factory=_new_id)
+    type: VocabularyIssueType
+    text: str
+    occurrences: int
+    example: str
+    suggestions: list[str] = Field(default_factory=list)
+    explanation: str = ""
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class VocabularyAnalysis(BaseModel):
+    session_id: str
+    provider: str
+    created_at: datetime = Field(default_factory=_now)
+    words_analyzed: int
+    unique_words: int
+    lexical_diversity: float
+    vocabulary_score: int = Field(ge=0, le=100)
+    issues: list[VocabularyIssue] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def issue_count(self) -> int:
+        return len(self.issues)
+
+
+class FluencyFindingType(str, Enum):
+    FILLER = "filler"
+    LONG_PAUSE = "long_pause"
+    REPETITION = "repetition"
+    RESTART = "restart"
+
+
+class FluencyFinding(BaseModel):
+    id: str = Field(default_factory=_new_id)
+    type: FluencyFindingType
+    text: str
+    occurrences: int
+    detail: str = ""
+
+
+class FluencyAnalysis(BaseModel):
+    """How the user spoke, measured from audio timings rather than judged.
+
+    `fluency_score` is None when the conversation contains no timed speech -
+    a text-only session cannot be scored for fluency, and guessing would be
+    worse than saying so.
+    """
+
+    session_id: str
+    created_at: datetime = Field(default_factory=_now)
+
+    timed_words: int
+    analyzed_seconds: float
+    speaking_rate_wpm: float
+    articulation_rate_wpm: float
+
+    pause_count: int
+    long_pause_count: int
+    total_pause_seconds: float
+
+    filler_count: int
+    repetition_count: int
+    restart_count: int
+
+    fluency_score: int | None = Field(default=None, ge=0, le=100)
+    note: str = ""
+    findings: list[FluencyFinding] = Field(default_factory=list)
 
 
 class ProviderCheck(BaseModel):

@@ -1,3 +1,4 @@
+import json
 import logging
 
 from sqlalchemy import select
@@ -6,7 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.errors import StorageError
 from app.db.models import SessionRow, TurnRow
-from app.models import AudioRef, Session, SessionStatus, Speaker, Turn
+from app.models import (
+    AudioRef,
+    Session,
+    SessionStatus,
+    Speaker,
+    Turn,
+    WordTiming,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +116,7 @@ def _turn_to_row(session_id: str, turn: Turn) -> TurnRow:
         assistant_audio_format=assistant.format if assistant else None,
         assistant_audio_duration=assistant.duration_seconds if assistant else None,
         assistant_audio_size=assistant.size_bytes if assistant else None,
+        words=json.dumps([w.model_dump() for w in turn.words]) if turn.words else None,
     )
 
 
@@ -139,7 +148,18 @@ def _turn_to_domain(row: TurnRow) -> Turn:
             row.assistant_audio_key, row.assistant_audio_format,
             row.assistant_audio_duration, row.assistant_audio_size,
         ),
+        words=_words_to_domain(row.words),
     )
+
+
+def _words_to_domain(raw: str | None) -> list[WordTiming]:
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+    except ValueError:
+        return []
+    return [WordTiming(**i) for i in items if isinstance(i, dict)]
 
 
 def _audio_to_domain(
