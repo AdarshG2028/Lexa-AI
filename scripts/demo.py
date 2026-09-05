@@ -221,12 +221,41 @@ def main() -> int:
         if not flu["findings"]:
             print("\n  No fluency issues found.")
 
+    rule("PRONUNCIATION ANALYSIS")
+    try:
+        pron = api.post_json(
+            f"/api/v1/sessions/{session_id}/analysis/pronunciation"
+        )
+    except ApiError as exc:
+        print(f"Analysis failed: {exc.body}", file=sys.stderr)
+        return 1
+
+    if pron["pronunciation_score"] is None:
+        print(f"  not scored: {pron['note']}")
+    else:
+        print(f"provider           {pron['provider']}")
+        print(f"pronunciation      {pron['pronunciation_score']}/100")
+        print(f"speech analysed    {pron['analyzed_seconds']}s"
+              f" over {pron['words_analyzed']} words")
+        print(f"raw substitutions  {pron['substitutions_found']}"
+              f"   reported {pron['issue_count']}")
+
+        for i in pron["issues"]:
+            print(f"\n  /{i['expected_phoneme']}/ -> /{i['detected_phoneme']}/"
+                  f"  x{i['occurrences']}  confidence {i['confidence']:.2f}")
+            print(f"     words    : {', '.join(i['affected_words'])}")
+            print(f"     practise : {', '.join(i['practice_words'][:5])}")
+
+        if not pron["issues"]:
+            print(f"\n  {pron['note']}")
+
     rule("NEXT")
     print(f"  session id : {session_id}")
     print(f"  transcript : {args.url}/api/v1/sessions/{session_id}/transcript")
     print(f"  grammar    : {args.url}/api/v1/sessions/{session_id}/analysis/grammar")
     print(f"  vocabulary : {args.url}/api/v1/sessions/{session_id}/analysis/vocabulary")
     print(f"  fluency    : {args.url}/api/v1/sessions/{session_id}/analysis/fluency")
+    print(f"  pronounce  : {args.url}/api/v1/sessions/{session_id}/analysis/pronunciation")
     print(f"  api docs   : {args.url}/docs")
     return 0
 

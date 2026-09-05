@@ -7,11 +7,10 @@ communicate: grammar, vocabulary, fluency, and phoneme-level pronunciation.
 This repository contains the **backend and AI pipeline only**. There is no
 frontend; a future web or mobile client will consume these APIs.
 
-**Current status: Phase 6 complete.** You can hold a multi-turn spoken
+**Current status: Phase 7 complete.** You can hold a multi-turn spoken
 conversation, the AI remembers what was said earlier, the whole conversation is
 persisted and retrievable as a transcript, and the backend analyses the user's
-grammar, vocabulary and fluency afterwards. Phoneme-level pronunciation is not
-implemented yet.
+grammar, vocabulary, fluency and phoneme-level pronunciation afterwards.
 
 ---
 
@@ -143,6 +142,7 @@ speech_analyses   one row per conversation, one nullable section per analysis
 grammar_issues    child rows
 vocabulary_issues child rows
 fluency_findings  child rows, queryable so Phase 9 can track recurring fillers
+pronunciation_issues  child rows, indexed on phoneme for cross-session tracking
 ```
 
 A conversation has **one** analysis record made of independent sections.
@@ -313,6 +313,94 @@ Measured against three generated samples:
 | `clean.wav` | 100 | 158.9 | 0 | 0 | 0 | 0 |
 | `hesitant.wav` | 19 | 83.9 | 3 | 7 | 1 | 1 |
 
+### Phoneme-level pronunciation
+
+`POST /api/v1/sessions/{id}/analysis/pronunciation` compares the sounds the
+speaker produced against the sounds their words require.
+
+This is the one part of the system that **runs a model on our own hardware**
+rather than calling an API. Everything else is a network request; this is a
+316M-parameter wav2vec2 CTC model doing acoustic analysis locally.
+
+```
+transcript --g2p_en--> expected phonemes (ARPAbet -> IPA), tagged by word
+audio      --wav2vec2--> detected phonemes (IPA) + per-phoneme confidence
+                  |
+          Needleman-Wunsch alignment
+                  |
+          substitutions, e.g. /θ/ -> /t/ in "think"
+                  |
+          aggregate across the whole conversation
+                  |
+          strict filtering -> a small number of trustworthy claims
+```
+
+Global alignment is used rather than index-by-index comparison: a learner who
+drops or inserts one sound would otherwise throw every later phoneme out of
+step and produce a cascade of false errors.
+
+**No espeak or phonemizer is needed.** The tokenizer is loaded with
+`do_phonemize=False`, which skips the backend that would otherwise require a
+native espeak-ng install - the reason this works unchanged on Windows and in a
+slim container.
+
+#### Not inventing errors
+
+Phoneme feedback on accented speech produces false positives very easily, so
+four filters sit between the model and the learner:
+
+1. **Notation folding.** CMUdict writes /ʌ/ where the model hears /ɐ/, /ɚ/
+   where it hears /ɜː/, and marks vowel length the model omits. Those are
+   transcription differences, not mispronunciations, and are folded together
+   before anything is compared.
+2. **Reduced vowels in function words are not judged.** Nobody says "and" with
+   the vowel the dictionary gives it. Consonants in those words *are* still
+   assessed, otherwise almost all evidence for /ð/ would vanish.
+3. **A pattern must recur** at least 3 times with mean confidence >= 0.55.
+4. **A pattern must appear in at least 2 different words.** One recogniser
+   slip repeated on a single word is not a pronunciation habit.
+
+Findings are worded as *"this may be worth practising"*, never as an
+accusation.
+
+#### Measured behaviour
+
+Two recordings of the same sentences, one pronounced correctly and one with
+/θ/ and /ð/ deliberately replaced by /t/ and /d/:
+
+| audio | score | raw substitutions | reported to learner |
+|---|---|---|---|
+| correct | **100/100** | 6 | **0** |
+| mispronounced | **69/100** | 18 | **1** - `/θ/ -> /t/` x6 in "three, thank" |
+
+Eighteen raw mismatches became one trustworthy claim, and correct speech
+produced no findings at all.
+
+#### Performance
+
+Warm inference runs at roughly **1.35x realtime** on 4 CPU threads, so three
+minutes of speech takes about two minutes. Loading the weights costs a further
+60-100 seconds on the first call only, which is why the provider is held for
+the life of the process.
+
+Set `PRONUNCIATION_TORCH_THREADS` to your core count; the default leaves torch
+using half of them.
+
+#### Installing it
+
+The ML stack is **not** a base dependency - the conversation API never loads a
+model and should not carry ~500 MB of wheels:
+
+```bash
+uv sync --group pronunciation
+```
+
+`PRONUNCIATION_PROVIDER=mock` needs none of it and is spelling-based, for
+exercising the aggregation and reporting offline. It cannot hear anything and
+is not a substitute for the model.
+
+Set `HF_HOME=./data/models` to keep ~1.9 GB of weights off the system drive.
+
 ### Project layout
 
 ```
@@ -328,6 +416,10 @@ app/
   analysis/grammar.py           collects user speech, scores, filters
   analysis/vocabulary.py        counts repetition, scores, thresholds
   analysis/fluency.py           rate, pauses, fillers - no model involved
+  analysis/phonemes.py          ARPAbet->IPA, alignment, notation folding
+  analysis/g2p.py               expected phonemes (lazy nltk import)
+  analysis/pronunciation.py     aggregation and the strictness rules
+  providers/wav2vec2/           the local phoneme model
   analysis/sql.py               analysis persistence
   db/models.py                  SQLAlchemy tables + UTC datetime handling
   db/engine.py                  engine, session factory, table creation
@@ -366,6 +458,10 @@ Then edit `.env`.
 | `TTS_PROVIDER` | `groq`, `deepgram` or `mock` |
 | `GRAMMAR_PROVIDER` | `groq` or `mock` (offline, rule-based) |
 | `VOCABULARY_PROVIDER` | `groq` or `mock` (offline, thesaurus) |
+| `PRONUNCIATION_PROVIDER` | `wav2vec2` (local model) or `mock` |
+| `PRONUNCIATION_MODEL` | Defaults to `facebook/wav2vec2-lv-60-espeak-cv-ft` |
+| `PRONUNCIATION_TORCH_THREADS` | 0 lets torch decide; your core count is faster |
+| `HF_HOME` | Where model weights are cached |
 | `GROQ_VOCABULARY_MODEL` | Blank uses `GROQ_LLM_MODEL` |
 | `GROQ_GRAMMAR_MODEL` | Blank uses `GROQ_LLM_MODEL` |
 | `TTS_FALLBACK_PROVIDERS` | Ordered fallbacks, e.g. `groq,mock` |
@@ -462,6 +558,8 @@ Codes: `INVALID_AUDIO`, `UNSUPPORTED_AUDIO_FORMAT`, `AUDIO_TOO_LARGE`,
 | `GET` | `/api/v1/sessions/{id}/analysis/vocabulary` | The stored vocabulary analysis |
 | `POST` | `/api/v1/sessions/{id}/analysis/fluency` | Run fluency analysis and store it |
 | `GET` | `/api/v1/sessions/{id}/analysis/fluency` | The stored fluency analysis |
+| `POST` | `/api/v1/sessions/{id}/analysis/pronunciation` | Run phoneme analysis (slow) |
+| `GET` | `/api/v1/sessions/{id}/analysis/pronunciation` | The stored pronunciation analysis |
 
 Supported upload formats: `flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm`.
 
@@ -622,7 +720,7 @@ A 45-60 second walkthrough, with the server running:
 | 4 | Grammar analysis | **Complete** |
 | 5 | Vocabulary analysis | **Complete** |
 | 6 | Fluency analysis | **Complete** |
-| 7 | Phoneme-level pronunciation | Not started |
+| 7 | Phoneme-level pronunciation | **Complete** |
 | 8 | Unified speech analysis report | Not started |
 | 9 | Cross-session progress tracking | Not started |
 

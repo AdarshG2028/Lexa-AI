@@ -131,6 +131,18 @@ class SpeechAnalysisRow(Base):
     repetition_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     restart_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    pronunciation_provider: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    pronunciation_created_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime, nullable=True
+    )
+    pronunciation_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pronunciation_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pronunciation_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pronunciation_words: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    substitutions_found: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     grammar_issues: Mapped[list["GrammarIssueRow"]] = relationship(
         back_populates="analysis",
         cascade="all, delete-orphan",
@@ -142,6 +154,11 @@ class SpeechAnalysisRow(Base):
         lazy="selectin",
     )
     fluency_findings: Mapped[list["FluencyFindingRow"]] = relationship(
+        back_populates="analysis",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    pronunciation_issues: Mapped[list["PronunciationIssueRow"]] = relationship(
         back_populates="analysis",
         cascade="all, delete-orphan",
         lazy="selectin",
@@ -207,4 +224,31 @@ class FluencyFindingRow(Base):
 
     analysis: Mapped[SpeechAnalysisRow] = relationship(
         back_populates="fluency_findings"
+    )
+
+
+class PronunciationIssueRow(Base):
+    """A recurring phoneme substitution.
+
+    Indexed on the phoneme pair so Phase 9 can ask whether a learner's /th/
+    is improving from one session to the next.
+    """
+
+    __tablename__ = "pronunciation_issues"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    analysis_id: Mapped[str] = mapped_column(
+        ForeignKey("speech_analyses.id", ondelete="CASCADE"), index=True
+    )
+    expected_phoneme: Mapped[str] = mapped_column(String(16), nullable=False,
+                                                  index=True)
+    detected_phoneme: Mapped[str] = mapped_column(String(16), nullable=False)
+    occurrences: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    affected_words: Mapped[str] = mapped_column(Text, nullable=False)
+    practice_words: Mapped[str] = mapped_column(Text, nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False)
+
+    analysis: Mapped[SpeechAnalysisRow] = relationship(
+        back_populates="pronunciation_issues"
     )

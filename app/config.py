@@ -8,6 +8,7 @@ LlmProviderName = Literal["groq", "mock"]
 TtsProviderName = Literal["groq", "deepgram", "mock"]
 GrammarProviderName = Literal["groq", "mock"]
 VocabularyProviderName = Literal["groq", "mock"]
+PronunciationProviderName = Literal["wav2vec2", "mock"]
 
 
 class Settings(BaseSettings):
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
 
     grammar_provider: GrammarProviderName = "mock"
     vocabulary_provider: VocabularyProviderName = "mock"
+    pronunciation_provider: PronunciationProviderName = "mock"
 
     # Ordered comma-separated names tried when tts_provider fails, e.g. "groq,mock".
     tts_fallback_providers: str = ""
@@ -39,6 +41,19 @@ class Settings(BaseSettings):
     deepgram_api_key: str = ""
     deepgram_base_url: str = "https://api.deepgram.com"
     deepgram_tts_model: str = "aura-2-thalia-en"
+
+    # Phoneme model. Emits IPA directly, so no espeak backend is required.
+    pronunciation_model: str = "facebook/wav2vec2-lv-60-espeak-cv-ft"
+    # 0 leaves torch to decide. Setting it to the core count roughly doubles
+    # throughput on a small machine.
+    pronunciation_torch_threads: int = 0
+
+    # How much evidence a phoneme pattern needs before a learner is told about
+    # it. The defaults suit a full 5-8 minute conversation; lower them for
+    # short test clips, accepting more false positives.
+    pronunciation_min_occurrences: int = 3
+    pronunciation_min_confidence: float = 0.55
+    pronunciation_min_distinct_words: int = 2
 
     provider_connect_timeout: float = 10.0
     provider_read_timeout: float = 90.0

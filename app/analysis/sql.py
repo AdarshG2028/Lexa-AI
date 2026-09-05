@@ -11,6 +11,7 @@ from app.core.errors import StorageError
 from app.db.models import (
     FluencyFindingRow,
     GrammarIssueRow,
+    PronunciationIssueRow,
     SpeechAnalysisRow,
     VocabularyIssueRow,
 )
@@ -20,6 +21,8 @@ from app.models import (
     FluencyFindingType,
     GrammarAnalysis,
     GrammarCategory,
+    PronunciationAnalysis,
+    PronunciationIssue,
     GrammarIssue,
     VocabularyAnalysis,
     VocabularyIssue,
@@ -224,6 +227,71 @@ class SqlAnalysisRepository:
                     detail=f.detail,
                 )
                 for f in row.fluency_findings
+            ],
+        )
+
+    async def save_pronunciation(
+        self, analysis: PronunciationAnalysis
+    ) -> PronunciationAnalysis:
+        try:
+            async with self._session_factory() as db:
+                row = await self._row_for(db, analysis.session_id)
+                row.pronunciation_provider = analysis.provider
+                row.pronunciation_created_at = analysis.created_at
+                row.pronunciation_score = analysis.pronunciation_score
+                row.pronunciation_note = analysis.note
+                row.pronunciation_seconds = analysis.analyzed_seconds
+                row.pronunciation_words = analysis.words_analyzed
+                row.substitutions_found = analysis.substitutions_found
+                row.pronunciation_issues = [
+                    PronunciationIssueRow(
+                        id=i.id,
+                        expected_phoneme=i.expected_phoneme,
+                        detected_phoneme=i.detected_phoneme,
+                        occurrences=i.occurrences,
+                        confidence=i.confidence,
+                        affected_words=json.dumps(i.affected_words),
+                        practice_words=json.dumps(i.practice_words),
+                        explanation=i.explanation,
+                    )
+                    for i in analysis.issues
+                ]
+                await db.commit()
+        except SQLAlchemyError as exc:
+            logger.exception(
+                "Failed to save pronunciation for %s", analysis.session_id
+            )
+            raise StorageError("The analysis could not be saved.") from exc
+        return analysis
+
+    async def get_pronunciation(
+        self, session_id: str
+    ) -> PronunciationAnalysis | None:
+        row = await self._load(session_id)
+        if row is None or row.pronunciation_provider is None:
+            return None
+        return PronunciationAnalysis(
+            session_id=row.session_id,
+            provider=row.pronunciation_provider,
+            created_at=row.pronunciation_created_at or row.created_at,
+            analyzed_seconds=row.pronunciation_seconds or 0.0,
+            words_analyzed=row.pronunciation_words or 0,
+            phonemes_analyzed=row.substitutions_found or 0,
+            substitutions_found=row.substitutions_found or 0,
+            pronunciation_score=row.pronunciation_score,
+            note=row.pronunciation_note or "",
+            issues=[
+                PronunciationIssue(
+                    id=i.id,
+                    expected_phoneme=i.expected_phoneme,
+                    detected_phoneme=i.detected_phoneme,
+                    occurrences=i.occurrences,
+                    confidence=i.confidence,
+                    affected_words=_load_suggestions(i.affected_words),
+                    practice_words=_load_suggestions(i.practice_words),
+                    explanation=i.explanation,
+                )
+                for i in row.pronunciation_issues
             ],
         )
 

@@ -15,6 +15,16 @@ dependencies = [
 ]
 
 [dependency-groups]
+# The pronunciation stack is deliberately NOT a base dependency. The
+# conversation API runs on a small instance that will never load a model, and
+# pulling ~500 MB of ML wheels onto it would be waste. Install with:
+#   uv sync --group pronunciation
+pronunciation = [
+    "torch>=2.5",
+    "transformers>=4.44",
+    "g2p-en>=2.1",
+    "numpy>=1.26",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -28,3 +38,13 @@ asyncio_mode = "auto"
 
 [tool.uv]
 package = false
+
+# CPU-only torch: a fraction of the size of the default CUDA build, which
+# matters both for a 10 GB system drive and for a Lambda container image.
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

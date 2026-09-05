@@ -4,7 +4,9 @@ from app.models import (
     ChatMessage,
     ChatReply,
     GrammarIssue,
+    PhonemeSubstitution,
     ProviderCheck,
+    PronunciationSample,
     SynthesizedSpeech,
     Transcription,
     UserUtterance,
@@ -72,5 +74,22 @@ class VocabularyAnalysisProvider(Protocol):
         it notices, which are not countable in code.
         """
         ...
+
+    async def check(self) -> ProviderCheck: ...
+
+
+@runtime_checkable
+class PronunciationAnalysisProvider(Protocol):
+    """Finds where produced sounds differ from expected ones.
+
+    The rest of the backend does not care whether this is wav2vec2, a forced
+    aligner, or an external pronunciation-assessment service.
+    """
+
+    name: str
+
+    async def analyze(
+        self, samples: list[PronunciationSample]
+    ) -> list[PhonemeSubstitution]: ...
 
     async def check(self) -> ProviderCheck: ...

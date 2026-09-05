@@ -3,6 +3,7 @@ from app.core.errors import ConfigError
 from app.providers.base import (
     GrammarAnalysisProvider,
     LLMProvider,
+    PronunciationAnalysisProvider,
     SpeechToTextProvider,
     TextToSpeechProvider,
     VocabularyAnalysisProvider,
@@ -18,6 +19,7 @@ from app.providers.groq.tts import GroqTextToSpeechProvider
 from app.providers.groq.vocabulary import GroqVocabularyAnalysisProvider
 from app.providers.mock.grammar import MockGrammarAnalysisProvider
 from app.providers.mock.llm import MockLLMProvider
+from app.providers.mock.pronunciation import MockPronunciationAnalysisProvider
 from app.providers.mock.stt import MockSpeechToTextProvider
 from app.providers.mock.tts import MockTextToSpeechProvider
 from app.providers.mock.vocabulary import MockVocabularyAnalysisProvider
@@ -31,6 +33,8 @@ class ProviderRegistry:
         self._settings = settings
         self._groq_client: GroqClient | None = None
         self._deepgram_client: DeepgramClient | None = None
+        # Held across requests: the weights cost seconds to load.
+        self._pronunciation = None
 
     def _groq(self) -> GroqClient:
         if self._groq_client is None:
@@ -73,6 +77,22 @@ class ProviderRegistry:
         if name == "mock":
             return MockVocabularyAnalysisProvider()
         raise ConfigError(f"Unknown VOCABULARY_PROVIDER: {name!r}")
+
+    def pronunciation(self) -> PronunciationAnalysisProvider:
+        """The wav2vec2 adapter is imported lazily so that a deployment
+        without the pronunciation stack installed can still start."""
+        name = self._settings.pronunciation_provider
+        if name == "wav2vec2":
+            from app.providers.wav2vec2.pronunciation import (
+                Wav2Vec2PronunciationProvider,
+            )
+
+            if self._pronunciation is None:
+                self._pronunciation = Wav2Vec2PronunciationProvider(self._settings)
+            return self._pronunciation
+        if name == "mock":
+            return MockPronunciationAnalysisProvider()
+        raise ConfigError(f"Unknown PRONUNCIATION_PROVIDER: {name!r}")
 
     def _one_text_to_speech(self, name: str) -> TextToSpeechProvider:
         if name == "groq":

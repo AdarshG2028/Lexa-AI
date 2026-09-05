@@ -1,6 +1,11 @@
 from typing import Protocol, runtime_checkable
 
-from app.models import FluencyAnalysis, GrammarAnalysis, VocabularyAnalysis
+from app.models import (
+    FluencyAnalysis,
+    GrammarAnalysis,
+    PronunciationAnalysis,
+    VocabularyAnalysis,
+)
 
 
 @runtime_checkable
@@ -25,3 +30,11 @@ class AnalysisRepository(Protocol):
     async def save_fluency(self, analysis: FluencyAnalysis) -> FluencyAnalysis: ...
 
     async def get_fluency(self, session_id: str) -> FluencyAnalysis | None: ...
+
+    async def save_pronunciation(
+        self, analysis: PronunciationAnalysis
+    ) -> PronunciationAnalysis: ...
+
+    async def get_pronunciation(
+        self, session_id: str
+    ) -> PronunciationAnalysis | None: ...

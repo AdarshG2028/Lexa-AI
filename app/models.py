@@ -248,6 +248,62 @@ class FluencyAnalysis(BaseModel):
     findings: list[FluencyFinding] = Field(default_factory=list)
 
 
+class PronunciationSample(BaseModel):
+    """One spoken turn handed to a pronunciation provider."""
+
+    turn_id: str
+    transcript: str
+    audio: bytes
+
+
+class PhonemeSubstitution(BaseModel):
+    """One place the speaker produced a different sound from the expected one."""
+
+    expected: str
+    detected: str
+    word: str
+    turn_id: str | None = None
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class PronunciationIssue(BaseModel):
+    """A substitution that recurred often enough to be worth reporting."""
+
+    id: str = Field(default_factory=_new_id)
+    expected_phoneme: str
+    detected_phoneme: str
+    occurrences: int
+    confidence: float = Field(ge=0.0, le=1.0)
+    affected_words: list[str] = Field(default_factory=list)
+    practice_words: list[str] = Field(default_factory=list)
+    explanation: str = ""
+
+
+class PronunciationAnalysis(BaseModel):
+    """Phoneme-level pronunciation findings.
+
+    `pronunciation_score` is None when there was no spoken audio to analyse.
+    """
+
+    session_id: str
+    provider: str
+    created_at: datetime = Field(default_factory=_now)
+
+    analyzed_seconds: float = 0.0
+    words_analyzed: int = 0
+    phonemes_analyzed: int = 0
+    substitutions_found: int = 0
+
+    pronunciation_score: int | None = Field(default=None, ge=0, le=100)
+    note: str = ""
+    issues: list[PronunciationIssue] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def issue_count(self) -> int:
+        return len(self.issues)
+
+
 class ProviderCheck(BaseModel):
     """Result of a provider preflight, in provider-neutral terms."""
 

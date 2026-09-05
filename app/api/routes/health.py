@@ -18,6 +18,7 @@ async def health(settings: SettingsDep) -> dict:
             "tts": settings.tts_provider,
             "grammar": settings.grammar_provider,
             "vocabulary": settings.vocabulary_provider,
+            "pronunciation": settings.pronunciation_provider,
         },
     }
 
@@ -33,6 +34,7 @@ async def provider_health(registry: RegistryDep, settings: SettingsDep) -> dict:
         "tts": registry.text_to_speech,
         "grammar": registry.grammar,
         "vocabulary": registry.vocabulary,
+        "pronunciation": registry.pronunciation,
     }
 
     results: dict = {}

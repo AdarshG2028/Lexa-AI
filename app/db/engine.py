@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import logging
+
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -8,6 +11,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.db.models import Base
+
+logger = logging.getLogger(__name__)
 
 
 def create_engine(database_url: str) -> AsyncEngine:
@@ -26,11 +31,47 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 
 
 async def create_tables(engine: AsyncEngine) -> None:
-    """Creates any missing tables.
+    """Brings the database up to date with the models.
 
-    Later phases add new tables (analysis, issues, metrics) which this picks up
-    automatically. It does not alter existing columns; a real migration tool
-    belongs here if the schema ever changes destructively.
+    `create_all` adds missing tables but silently ignores columns added to a
+    table that already exists, which surfaces later as a baffling
+    "no such column" in the middle of a request. Each analysis phase adds
+    nullable columns to `speech_analyses`, so those are reconciled here too.
     """
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(_add_missing_columns)
+
+
+def _add_missing_columns(connection) -> None:
+    """Adds columns the models declare but the database lacks.
+
+    Only safe additions are handled: a new nullable column with no default.
+    Renames, drops and type changes are deliberately out of scope - those need
+    a real migration tool, and pretending otherwise would lose data.
+    """
+    inspector = inspect(connection)
+    existing_tables = set(inspector.get_table_names())
+
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+
+        present = {c["name"] for c in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in present:
+                continue
+            if not column.nullable:
+                logger.error(
+                    "Column %s.%s is missing and cannot be added automatically "
+                    "because it is NOT NULL. The database schema is out of "
+                    "date; recreate it or add a migration.",
+                    table.name, column.name,
+                )
+                continue
+
+            ddl = column.type.compile(connection.dialect)
+            connection.execute(
+                text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {ddl}')
+            )
+            logger.info("Added missing column %s.%s", table.name, column.name)

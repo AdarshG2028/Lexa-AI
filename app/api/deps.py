@@ -5,6 +5,7 @@ from fastapi import Depends, Request
 
 from app.analysis.fluency import FluencyAnalysisService
 from app.analysis.grammar import GrammarAnalysisService
+from app.analysis.pronunciation import PronunciationAnalysisService
 from app.analysis.vocabulary import VocabularyAnalysisService
 from app.analysis.repository import AnalysisRepository
 from app.config import Settings, get_settings
@@ -54,6 +55,20 @@ def get_fluency_service() -> FluencyAnalysisService:
     return FluencyAnalysisService()
 
 
+def get_pronunciation_service(
+    settings: SettingsDep,
+    registry: Annotated[ProviderRegistry, Depends(get_registry)],
+    storage: Annotated[AudioStorage, Depends(get_audio_storage)],
+) -> PronunciationAnalysisService:
+    return PronunciationAnalysisService(
+        registry.pronunciation(),
+        storage,
+        min_occurrences=settings.pronunciation_min_occurrences,
+        min_confidence=settings.pronunciation_min_confidence,
+        min_distinct_words=settings.pronunciation_min_distinct_words,
+    )
+
+
 def get_conversation_service(
     settings: SettingsDep,
     registry: Annotated[ProviderRegistry, Depends(get_registry)],
@@ -79,6 +94,9 @@ VocabularyServiceDep = Annotated[
     VocabularyAnalysisService, Depends(get_vocabulary_service)
 ]
 FluencyServiceDep = Annotated[FluencyAnalysisService, Depends(get_fluency_service)]
+PronunciationServiceDep = Annotated[
+    PronunciationAnalysisService, Depends(get_pronunciation_service)
+]
 AnalysisRepositoryDep = Annotated[
     AnalysisRepository, Depends(get_analysis_repository)
 ]

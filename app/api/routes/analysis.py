@@ -5,10 +5,16 @@ from app.api.deps import (
     ConversationServiceDep,
     GrammarServiceDep,
     FluencyServiceDep,
+    PronunciationServiceDep,
     VocabularyServiceDep,
 )
 from app.core.errors import AnalysisNotFoundError
-from app.models import FluencyAnalysis, GrammarAnalysis, VocabularyAnalysis
+from app.models import (
+    FluencyAnalysis,
+    GrammarAnalysis,
+    PronunciationAnalysis,
+    VocabularyAnalysis,
+)
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["analysis"])
 
@@ -93,6 +99,41 @@ async def get_fluency_analysis(
 ) -> FluencyAnalysis:
     await conversation.get_session(session_id)
     analysis = await analyses.get_fluency(session_id)
+    if analysis is None:
+        raise AnalysisNotFoundError(session_id=session_id)
+    return analysis
+
+
+@router.post(
+    "/{session_id}/analysis/pronunciation", response_model=PronunciationAnalysis
+)
+async def run_pronunciation_analysis(
+    session_id: str,
+    conversation: ConversationServiceDep,
+    pronunciation: PronunciationServiceDep,
+    analyses: AnalysisRepositoryDep,
+) -> PronunciationAnalysis:
+    """Compares the sounds produced against the sounds the words require.
+
+    Runs a phoneme model over the stored audio, so this is by far the slowest
+    endpoint - seconds per turn, and slower still on the first call while the
+    weights load.
+    """
+    session = await conversation.get_session(session_id)
+    analysis = await pronunciation.analyze(session)
+    return await analyses.save_pronunciation(analysis)
+
+
+@router.get(
+    "/{session_id}/analysis/pronunciation", response_model=PronunciationAnalysis
+)
+async def get_pronunciation_analysis(
+    session_id: str,
+    conversation: ConversationServiceDep,
+    analyses: AnalysisRepositoryDep,
+) -> PronunciationAnalysis:
+    await conversation.get_session(session_id)
+    analysis = await analyses.get_pronunciation(session_id)
     if analysis is None:
         raise AnalysisNotFoundError(session_id=session_id)
     return analysis

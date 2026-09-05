@@ -39,6 +39,7 @@ def settings(tmp_path) -> Settings:
         tts_provider="mock",
         grammar_provider="mock",
         vocabulary_provider="mock",
+        pronunciation_provider="mock",
         storage_local_path=str(tmp_path / "audio"),
         max_upload_bytes=5_000_000,
         max_audio_seconds=60,
