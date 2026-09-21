@@ -77,6 +77,12 @@ class AnalysisNotFoundError(AppError):
     message = "This conversation has not been analysed yet."
 
 
+class RateLimitedError(AppError):
+    code = "RATE_LIMITED"
+    status_code = 429
+    message = "Too many requests. Please slow down."
+
+
 class FeatureDisabledError(AppError):
     code = "FEATURE_DISABLED"
     status_code = 501

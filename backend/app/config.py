@@ -87,6 +87,18 @@ class Settings(BaseSettings):
     # Blank disables it; the exact list above is always honoured.
     cors_allowed_origin_regex: str = ""
 
+    # Per-IP request limits, counted over a sliding one-minute window. The two
+    # tight ones cover the calls that spend provider quota; everything else
+    # shares the general limit. 0 turns a limit off.
+    rate_limit_enabled: bool = True
+    rate_limit_turns_per_minute: int = 20
+    rate_limit_analysis_per_minute: int = 10
+    rate_limit_general_per_minute: int = 120
+    # How many reverse proxies sit in front of this app. Behind Render the
+    # socket peer is always the proxy, so without this every user would share
+    # one limit. 0 trusts the socket address, which is right when run directly.
+    trusted_proxy_hops: int = 0
+
     log_level: str = "INFO"
 
     @property

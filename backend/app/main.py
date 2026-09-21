@@ -11,6 +11,7 @@ from app.audio.processing import ffmpeg_available
 from app.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
+from app.core.ratelimit import RateLimitMiddleware
 from app.analysis.memory import InMemoryAnalysisRepository
 from app.analysis.sql import SqlAnalysisRepository
 from app.db.engine import create_engine, create_session_factory, create_tables
@@ -72,12 +73,19 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    settings = get_settings()
+
+    # Middleware added last runs first. The limiter goes on first so that CORS
+    # wraps it, which lets a 429 carry the headers the browser needs to show it.
+    if settings.rate_limit_enabled:
+        app.add_middleware(RateLimitMiddleware, settings=settings)
+
     # No cookies or auth headers are used, so credentials stay off: allowing
     # them would force every origin to be named exactly and buys nothing here.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=get_settings().cors_origins,
-        allow_origin_regex=get_settings().cors_allowed_origin_regex or None,
+        allow_origins=settings.cors_origins,
+        allow_origin_regex=settings.cors_allowed_origin_regex or None,
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],

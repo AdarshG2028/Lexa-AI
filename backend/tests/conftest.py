@@ -29,6 +29,9 @@ def isolate_environment(monkeypatch):
         "GROQ_API_KEY", "DEEPGRAM_API_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
+    # Off unless a test is about limiting, so no test can trip a limit by accident.
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
+    get_settings.cache_clear()
 
 
 @pytest.fixture

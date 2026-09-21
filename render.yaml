@@ -51,3 +51,8 @@ services:
         sync: false
       - key: SESSION_STORE
         value: database
+      # Render's proxy sits in front of the app, so the real client address
+      # comes from X-Forwarded-For. Check the "Rate limited" log lines after
+      # deploying: if different users all show the same address, adjust this.
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"

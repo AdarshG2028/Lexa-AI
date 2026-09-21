@@ -55,8 +55,14 @@ Tables are created on first start.
 - **The first request after a quiet period is slow** on Render's free tier while the
   instance wakes up. Open the app once before a demo.
 - **Microphone access needs HTTPS**, which Vercel provides.
-- **The API has no login.** Anyone with the URL can spend your Groq quota. Fine for
-  a project demo; do not publish the URL widely.
+- **The API has no login, but it is rate limited per IP:** 20 turns, 10 analyses and 120
+  requests a minute (`RATE_LIMIT_*` variables). Groq's own quota is the overall cap.
+  The counters live in memory, so they reset on restart and are not shared if you
+  ever run more than one instance.
+- **Check the rate limiter after deploying.** It relies on `TRUSTED_PROXY_HOPS=1` to find
+  the real client behind Render's proxy. If it is wrong, every visitor is counted as one
+  address and hits the limit together. Open the app from two devices, trigger a limit on
+  one, and read the `Rate limited ...` log lines: each device should show its own address.
 - **Test on the production URL.** A preview deployment has a different origin and is
   blocked unless `CORS_ALLOWED_ORIGIN_REGEX` matches it.
 - **Audio is not durable.** Replies live on the instance's disk and vanish on
