@@ -8,10 +8,10 @@ conversation page, and the insights report.
 
 ## Running it against the backend
 
-This app is now wired to the real API in `G:\Codes\Voice AI` — no scripted
+This app is now wired to the real API in `../backend` — no scripted
 demo data remains. Both halves must be running.
 
-**1. Backend** (from `G:\Codes\Voice AI`):
+**1. Backend** (from `backend/`):
 
 ```
 uv run uvicorn app.main:app --port 8001
