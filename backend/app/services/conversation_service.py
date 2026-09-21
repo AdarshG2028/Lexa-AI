@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from datetime import datetime, timezone
@@ -90,8 +91,10 @@ class ConversationService:
         session = await self.get_active_session(session_id)
 
         extension = validate_upload(filename, len(audio), self._settings.max_upload_bytes)
-        wav_bytes, duration = normalize_to_wav(
-            audio, extension, self._settings.max_audio_seconds
+        # ffmpeg is a blocking subprocess. Run inline it would freeze the whole
+        # server, health checks included, for as long as a conversion takes.
+        wav_bytes, duration = await asyncio.to_thread(
+            normalize_to_wav, audio, extension, self._settings.max_audio_seconds
         )
 
         turn = Turn(index=len(session.turns), speaker=Speaker.USER, transcript="")

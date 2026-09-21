@@ -102,3 +102,36 @@ def test_streamed_audio_without_a_declared_duration_is_accepted():
 
     assert wav[:4] == b"RIFF"
     assert 1.5 < duration < 2.5
+
+
+async def test_a_slow_conversion_does_not_freeze_the_server(client, monkeypatch):
+    """ffmpeg is a blocking subprocess. If it ran on the event loop, every other
+    request - the host's health check included - would wait for it."""
+    import asyncio
+    import time
+
+    def slow_conversion(audio, extension, max_seconds):
+        time.sleep(0.6)
+        return make_wav(1.0), 1.0
+
+    monkeypatch.setattr(
+        "app.services.conversation_service.normalize_to_wav", slow_conversion
+    )
+    session_id = (await client.post("/api/v1/sessions")).json()["id"]
+
+    started = time.perf_counter()
+    turn = asyncio.create_task(
+        client.post(
+            f"/api/v1/sessions/{session_id}/turns",
+            files={"file": ("speech.wav", make_wav(1.0), "audio/wav")},
+        )
+    )
+    await asyncio.sleep(0.1)
+    health = await client.get("/health")
+    elapsed = time.perf_counter() - started
+    await turn
+
+    # Timed from before the conversion began: if it blocks the event loop, even
+    # a 0.1 s sleep cannot resume until the 0.6 s conversion has finished.
+    assert health.status_code == 200
+    assert elapsed < 0.4
