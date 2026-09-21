@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes import analysis, conversation, health
@@ -69,6 +70,16 @@ def create_app() -> FastAPI:
         description="Backend API. Phase 1: speak to the AI and hear it reply.",
         version="0.1.0",
         lifespan=lifespan,
+    )
+
+    # No cookies or auth headers are used, so credentials stay off: allowing
+    # them would force every origin to be named exactly and buys nothing here.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=get_settings().cors_origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     app.include_router(health.router)

@@ -79,9 +79,15 @@ def repair_wav_header(data: bytes) -> bytes:
     return bytes(fixed)
 
 
-def probe_duration(path: Path) -> float:
-    """Read the audio duration with ffprobe. Raises InvalidAudioError if the
-    file is not decodable audio, which is how a mislabelled upload is caught."""
+def probe_duration(path: Path) -> float | None:
+    """Read the audio duration with ffprobe.
+
+    Raises InvalidAudioError if the file is not decodable audio, which is how a
+    mislabelled upload is caught. Returns None when the stream decodes but the
+    container declares no duration: a browser's MediaRecorder streams its
+    output and never seeks back to patch the header, so every microphone
+    recording arrives in exactly that state.
+    """
     result = subprocess.run(
         [
             "ffprobe", "-v", "error",
@@ -98,12 +104,17 @@ def probe_duration(path: Path) -> float:
 
     try:
         payload = json.loads(result.stdout)
-        streams = payload.get("streams", [])
-        if not any(s.get("codec_type") == "audio" for s in streams):
-            raise InvalidAudioError("The file contains no audio stream.")
+    except ValueError as exc:
+        raise InvalidAudioError("The file could not be decoded as audio.") from exc
+
+    streams = payload.get("streams", [])
+    if not any(s.get("codec_type") == "audio" for s in streams):
+        raise InvalidAudioError("The file contains no audio stream.")
+
+    try:
         return float(payload["format"]["duration"])
-    except (ValueError, KeyError, TypeError) as exc:
-        raise InvalidAudioError("The audio duration could not be determined.") from exc
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def normalize_to_wav(audio: bytes, extension: str, max_seconds: float) -> tuple[bytes, float]:
@@ -121,11 +132,8 @@ def normalize_to_wav(audio: bytes, extension: str, max_seconds: float) -> tuple[
         source.write_bytes(audio)
 
         duration = probe_duration(source)
-        if duration > max_seconds:
-            raise AudioTooLargeError(
-                f"The audio is {duration:.1f}s long; the limit is {max_seconds:.0f}s.",
-                limit_seconds=max_seconds,
-            )
+        if duration is not None:
+            _enforce_limit(duration, max_seconds)
 
         result = subprocess.run(
             [
@@ -142,4 +150,24 @@ def normalize_to_wav(audio: bytes, extension: str, max_seconds: float) -> tuple[
         if result.returncode != 0 or not target.exists():
             raise InvalidAudioError("The audio could not be converted for processing.")
 
+        if duration is None:
+            # The upload declared no length, so it is measured from the
+            # converted file, which always carries a complete header. The
+            # length limit is enforced here instead of before conversion; the
+            # upload size cap already bounds how much work that can be.
+            duration = probe_duration(target)
+            if duration is None:
+                raise InvalidAudioError(
+                    "The audio duration could not be determined."
+                )
+            _enforce_limit(duration, max_seconds)
+
         return target.read_bytes(), duration
+
+
+def _enforce_limit(duration: float, max_seconds: float) -> None:
+    if duration > max_seconds:
+        raise AudioTooLargeError(
+            f"The audio is {duration:.1f}s long; the limit is {max_seconds:.0f}s.",
+            limit_seconds=max_seconds,
+        )

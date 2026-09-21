@@ -1,0 +1,15 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+
+# Never bake secrets or local state into an image.
+.env
+data/
+samples/
+scripts/
+tests/
+
+# Model weights: gigabytes, and the deployed image runs no local model.
+data/models/

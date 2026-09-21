@@ -82,3 +82,23 @@ def test_repair_wav_header_leaves_a_valid_file_unchanged():
 
 def test_repair_wav_header_ignores_non_wav_bytes():
     assert repair_wav_header(b"not a wav") == b"not a wav"
+
+
+def test_streamed_audio_without_a_declared_duration_is_accepted():
+    """What a browser's MediaRecorder produces: the encoder streams its output
+    and never seeks back to write the duration into the header. Rejecting that
+    would reject every microphone recording."""
+    import subprocess
+
+    source = subprocess.run(
+        ["ffmpeg", "-nostdin", "-loglevel", "error",
+         "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+         "-c:a", "libopus", "-f", "webm", "pipe:1"],
+        capture_output=True,
+    )
+    assert source.returncode == 0, source.stderr.decode()[:400]
+
+    wav, duration = normalize_to_wav(source.stdout, ".webm", max_seconds=60)
+
+    assert wav[:4] == b"RIFF"
+    assert 1.5 < duration < 2.5

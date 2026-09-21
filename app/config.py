@@ -75,6 +75,13 @@ class Settings(BaseSettings):
     storage_provider: Literal["local"] = "local"
     storage_local_path: str = "data/audio"
 
+    # Browser origins permitted to call this API. A browser refuses a
+    # cross-origin request unless the server names the origin explicitly, so
+    # the frontend dev server has to appear here to reach the backend at all.
+    cors_allowed_origins: str = (
+        "http://localhost:8080,http://127.0.0.1:8080,http://localhost:8081,http://127.0.0.1:8081,http://localhost:5173,http://127.0.0.1:5173"
+    )
+
     log_level: str = "INFO"
 
     @property
@@ -87,6 +94,14 @@ class Settings(BaseSettings):
             if cleaned and cleaned not in names:
                 names.append(cleaned)
         return names
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_allowed_origins.split(",")
+            if origin.strip()
+        ]
 
     @property
     def uses_groq(self) -> bool:
