@@ -14,7 +14,12 @@ from app.core.logging import configure_logging
 from app.core.ratelimit import RateLimitMiddleware
 from app.analysis.memory import InMemoryAnalysisRepository
 from app.analysis.sql import SqlAnalysisRepository
-from app.db.engine import create_engine, create_session_factory, create_tables
+from app.db.engine import (
+    create_engine,
+    create_session_factory,
+    create_tables,
+    describe_database,
+)
 from app.providers.registry import ProviderRegistry
 from app.sessions.memory import InMemorySessionRepository
 from app.sessions.sql import SqlSessionRepository
@@ -51,7 +56,7 @@ async def lifespan(app: FastAPI):
         factory = create_session_factory(app.state.engine)
         app.state.session_repository = SqlSessionRepository(factory)
         app.state.analysis_repository = SqlAnalysisRepository(factory)
-        logger.info("Sessions persisted to %s", settings.database_url)
+        logger.info("Sessions persisted to %s", describe_database(settings.database_url))
     else:
         app.state.session_repository = InMemorySessionRepository()
         app.state.analysis_repository = InMemoryAnalysisRepository()

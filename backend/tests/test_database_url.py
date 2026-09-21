@@ -1,7 +1,7 @@
 """Hosting providers hand out database URLs the async driver cannot use as-is.
 Getting this wrong fails only at connect time, on the deployed service."""
 
-from app.db.engine import prepare_database_url
+from app.db.engine import describe_database, prepare_database_url
 
 
 def test_neon_style_url_is_rewritten_for_asyncpg():
@@ -47,3 +47,15 @@ def test_password_survives_the_round_trip():
     url, _ = prepare_database_url("postgresql://u:a%2Fb%3Fc@host/db")
 
     assert "a%2Fb%3Fc" in url
+
+
+def test_logged_database_url_never_contains_the_password():
+    shown = describe_database("postgresql://user:s3cret-pw@ep-x.neon.tech/db?sslmode=require")
+
+    assert "s3cret-pw" not in shown
+    assert "ep-x.neon.tech" in shown
+    assert "postgresql" in shown
+
+
+def test_legacy_scheme_password_is_hidden_too():
+    assert "hunter2" not in describe_database("postgres://u:hunter2@host/db")

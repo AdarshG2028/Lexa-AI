@@ -45,6 +45,17 @@ def prepare_database_url(database_url: str) -> tuple[str, dict]:
     return url.render_as_string(hide_password=False), connect_args
 
 
+def describe_database(database_url: str) -> str:
+    """The URL with its password hidden, for logs.
+
+    Hosted database URLs carry the password inline, and logs on a hosting
+    platform are readable by anyone with access to the project.
+    """
+    if database_url.startswith("postgres://"):
+        database_url = "postgresql://" + database_url.removeprefix("postgres://")
+    return make_url(database_url).render_as_string(hide_password=True)
+
+
 def create_engine(database_url: str) -> AsyncEngine:
     """Builds the async engine, creating the SQLite parent directory if the
     URL points at a file that lives in one."""
