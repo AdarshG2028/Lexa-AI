@@ -8,6 +8,11 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /health
+    # The repository also holds the frontend. Only rebuild the API when its own
+    # folder changes.
+    buildFilter:
+      paths:
+        - backend/**
     envVars:
       # Secrets and per-environment values are entered in the Render dashboard.
       - key: GROQ_API_KEY
