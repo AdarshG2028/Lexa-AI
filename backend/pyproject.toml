@@ -12,6 +12,7 @@ dependencies = [
     "python-multipart>=0.0.12",
     "sqlalchemy[asyncio]>=2.0",
     "aiosqlite>=0.20",
+    "asyncpg>=0.31.0",
 ]
 
 [dependency-groups]

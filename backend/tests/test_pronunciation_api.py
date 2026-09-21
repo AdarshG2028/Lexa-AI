@@ -97,3 +97,23 @@ async def test_the_transcript_is_unchanged_by_analysis(client):
 
     after = (await client.get(f"/api/v1/sessions/{session_id}/transcript")).json()
     assert before["entries"] == after["entries"]
+
+
+async def test_disabled_pronunciation_refuses_instead_of_inventing_results(
+    app, client, settings
+):
+    """A deployment that cannot run the phoneme model must say so. The mock
+    would answer with plausible findings made up from spelling."""
+    from app.api.deps import get_registry
+    from app.providers.registry import ProviderRegistry
+
+    off = settings.model_copy(update={"pronunciation_provider": "off"})
+    app.dependency_overrides[get_registry] = lambda: ProviderRegistry(off)
+    session_id = await spoken_session(client)
+
+    response = await client.post(
+        f"/api/v1/sessions/{session_id}/analysis/pronunciation"
+    )
+
+    assert response.status_code == 501
+    assert response.json()["error"]["code"] == "FEATURE_DISABLED"

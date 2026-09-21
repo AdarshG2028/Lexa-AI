@@ -77,6 +77,12 @@ class AnalysisNotFoundError(AppError):
     message = "This conversation has not been analysed yet."
 
 
+class FeatureDisabledError(AppError):
+    code = "FEATURE_DISABLED"
+    status_code = 501
+    message = "This feature is not enabled on this server."
+
+
 class ProviderUnavailableError(AppError):
     code = "PROVIDER_UNAVAILABLE"
     status_code = 502

@@ -19,6 +19,7 @@ from app.providers.groq.tts import GroqTextToSpeechProvider
 from app.providers.groq.vocabulary import GroqVocabularyAnalysisProvider
 from app.providers.mock.grammar import MockGrammarAnalysisProvider
 from app.providers.mock.llm import MockLLMProvider
+from app.providers.disabled import DisabledPronunciationProvider
 from app.providers.mock.pronunciation import MockPronunciationAnalysisProvider
 from app.providers.mock.stt import MockSpeechToTextProvider
 from app.providers.mock.tts import MockTextToSpeechProvider
@@ -92,6 +93,8 @@ class ProviderRegistry:
             return self._pronunciation
         if name == "mock":
             return MockPronunciationAnalysisProvider()
+        if name == "off":
+            return DisabledPronunciationProvider()
         raise ConfigError(f"Unknown PRONUNCIATION_PROVIDER: {name!r}")
 
     def _one_text_to_speech(self, name: str) -> TextToSpeechProvider:

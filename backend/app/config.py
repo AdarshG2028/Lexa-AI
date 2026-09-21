@@ -8,7 +8,7 @@ LlmProviderName = Literal["groq", "mock"]
 TtsProviderName = Literal["groq", "deepgram", "mock"]
 GrammarProviderName = Literal["groq", "mock"]
 VocabularyProviderName = Literal["groq", "mock"]
-PronunciationProviderName = Literal["wav2vec2", "mock"]
+PronunciationProviderName = Literal["wav2vec2", "mock", "off"]
 
 
 class Settings(BaseSettings):
@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = (
         "http://localhost:8080,http://127.0.0.1:8080,http://localhost:8081,http://127.0.0.1:8081,http://localhost:5173,http://127.0.0.1:5173"
     )
+
+    # A regex for origins that cannot be listed in advance. Vercel gives every
+    # preview deployment its own subdomain, so a fixed list never matches them.
+    # Blank disables it; the exact list above is always honoured.
+    cors_allowed_origin_regex: str = ""
 
     log_level: str = "INFO"
 
