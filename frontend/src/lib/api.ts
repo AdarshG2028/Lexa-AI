@@ -227,4 +227,12 @@ export const runFluency = (id: string) => analysis(id, "fluency") as Promise<Flu
 export const runPronunciation = (id: string) =>
   analysis(id, "pronunciation") as Promise<PronunciationAnalysis>;
 
+/**
+ * Pronunciation needs the phoneme model, which only some deployments run.
+ * It is off unless VITE_ENABLE_PRONUNCIATION is exactly "true", so a build that
+ * forgets the variable hides the feature instead of offering a button that
+ * cannot work.
+ */
+export const PRONUNCIATION_ENABLED = import.meta.env["VITE_ENABLE_PRONUNCIATION"] === "true";
+
 export { BASE_URL };

@@ -34,3 +34,6 @@ dist-ssr
 # Local API configuration
 .env
 .env.local
+
+# Build output
+.vercel

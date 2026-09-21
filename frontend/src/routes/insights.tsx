@@ -13,6 +13,7 @@ import {
 
 import {
   ApiError,
+  PRONUNCIATION_ENABLED,
   runFluency,
   runGrammar,
   runPronunciation,
@@ -29,13 +30,13 @@ export const Route = createFileRoute("/insights")({
   }),
   head: () => ({
     meta: [
-      { title: "Session report — grammar & pronunciation | Lexa" },
+      { title: "Session report — grammar, vocabulary & fluency | Lexa" },
       {
         name: "description",
         content:
           "Your Lexa session report: corrected sentences with the grammar rule behind each fix, plus phonetic drills for the sounds you missed.",
       },
-      { property: "og:title", content: "Session report — grammar & pronunciation | Lexa" },
+      { property: "og:title", content: "Session report — grammar, vocabulary & fluency | Lexa" },
       {
         property: "og:description",
         content: "Grammar corrections and phonetic coaching from your latest voice session.",
@@ -152,7 +153,9 @@ function Insights() {
           </p>
         )}
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          className={`mt-8 grid gap-4 sm:grid-cols-2 ${PRONUNCIATION_ENABLED ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}
+        >
           <Stat
             label="Fluency"
             value={fluency?.fluency_score ?? null}
@@ -176,11 +179,15 @@ function Insights() {
                 : "…"
             }
           />
-          <Stat
-            label="Pronunciation"
-            value={pronunciation?.pronunciation_score ?? null}
-            caption={pronunciation ? `${pronunciation.issue_count} sounds flagged` : "Not run yet"}
-          />
+          {PRONUNCIATION_ENABLED && (
+            <Stat
+              label="Pronunciation"
+              value={pronunciation?.pronunciation_score ?? null}
+              caption={
+                pronunciation ? `${pronunciation.issue_count} sounds flagged` : "Not run yet"
+              }
+            />
+          )}
         </div>
       </section>
 
@@ -303,80 +310,84 @@ function Insights() {
       )}
 
       <section className="relative mx-auto w-full max-w-5xl px-6 pb-24">
-        <div className="flex items-center gap-3">
-          <AudioLines className="size-5 text-accent" />
-          <h2 className="text-3xl">Phonetic improvements</h2>
-        </div>
-
-        {!pronunciation && (
-          <div className="surface mt-6 rounded-3xl p-8">
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Pronunciation is measured by running a phoneme model over your recorded audio. It is
-              by far the slowest step — expect 60–100 seconds on the first run while the model
-              loads, and roughly 1.5× the length of your speech after that. Everything above is
-              already complete, so run this only when you want it.
-            </p>
-            <button
-              onClick={() => void analysePronunciation()}
-              disabled={pronRunning}
-              className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
-            >
-              {pronRunning ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" /> Listening to your phonemes…
-                </>
-              ) : (
-                <>
-                  <AudioLines className="size-4" /> Analyse pronunciation
-                </>
-              )}
-            </button>
-            {pronError && (
-              <p className="mt-4 rounded-2xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
-                {pronError}
-              </p>
-            )}
-          </div>
-        )}
-
-        {pronunciation && (
+        {PRONUNCIATION_ENABLED && (
           <>
-            {pronunciation.note && (
-              <p className="mt-4 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                {pronunciation.note}
-              </p>
-            )}
-            {pronunciation.issues.length > 0 && (
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
-                {pronunciation.issues.map((issue) => (
-                  <article key={issue.id} className="surface flex flex-col rounded-3xl p-6">
-                    <div className="flex items-baseline justify-between">
-                      <h3 className="font-mono text-2xl">/{issue.expected_phoneme}/</h3>
-                      <span className="font-mono text-xs text-accent">
-                        heard /{issue.detected_phoneme}/
-                      </span>
-                    </div>
-                    <div className="mt-4 h-1.5 w-full rounded-full bg-secondary">
-                      <div
-                        className="h-full rounded-full bg-accent"
-                        style={{ width: `${Math.round(issue.confidence * 100)}%` }}
-                      />
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {issue.occurrences} occurrences · {Math.round(issue.confidence * 100)}%
-                      confidence
-                    </p>
-                    <p className="mt-4 flex-1 text-sm leading-relaxed text-muted-foreground">
-                      Heard in: {issue.affected_words.join(", ")}
-                    </p>
-                    {issue.practice_words.length > 0 && (
-                      <p className="mt-4 rounded-2xl bg-secondary px-4 py-3 text-sm">
-                        {issue.practice_words.slice(0, 5).join(" · ")}
-                      </p>
-                    )}
-                  </article>
-                ))}
+            <div className="flex items-center gap-3">
+              <AudioLines className="size-5 text-accent" />
+              <h2 className="text-3xl">Phonetic improvements</h2>
+            </div>
+
+            {!pronunciation && (
+              <div className="surface mt-6 rounded-3xl p-8">
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  Pronunciation is measured by running a phoneme model over your recorded audio. It
+                  is by far the slowest step — expect 60–100 seconds on the first run while the
+                  model loads, and roughly 1.5× the length of your speech after that. Everything
+                  above is already complete, so run this only when you want it.
+                </p>
+                <button
+                  onClick={() => void analysePronunciation()}
+                  disabled={pronRunning}
+                  className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  {pronRunning ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" /> Listening to your phonemes…
+                    </>
+                  ) : (
+                    <>
+                      <AudioLines className="size-4" /> Analyse pronunciation
+                    </>
+                  )}
+                </button>
+                {pronError && (
+                  <p className="mt-4 rounded-2xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
+                    {pronError}
+                  </p>
+                )}
               </div>
+            )}
+
+            {pronunciation && (
+              <>
+                {pronunciation.note && (
+                  <p className="mt-4 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                    {pronunciation.note}
+                  </p>
+                )}
+                {pronunciation.issues.length > 0 && (
+                  <div className="mt-6 grid gap-4 md:grid-cols-3">
+                    {pronunciation.issues.map((issue) => (
+                      <article key={issue.id} className="surface flex flex-col rounded-3xl p-6">
+                        <div className="flex items-baseline justify-between">
+                          <h3 className="font-mono text-2xl">/{issue.expected_phoneme}/</h3>
+                          <span className="font-mono text-xs text-accent">
+                            heard /{issue.detected_phoneme}/
+                          </span>
+                        </div>
+                        <div className="mt-4 h-1.5 w-full rounded-full bg-secondary">
+                          <div
+                            className="h-full rounded-full bg-accent"
+                            style={{ width: `${Math.round(issue.confidence * 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {issue.occurrences} occurrences · {Math.round(issue.confidence * 100)}%
+                          confidence
+                        </p>
+                        <p className="mt-4 flex-1 text-sm leading-relaxed text-muted-foreground">
+                          Heard in: {issue.affected_words.join(", ")}
+                        </p>
+                        {issue.practice_words.length > 0 && (
+                          <p className="mt-4 rounded-2xl bg-secondary px-4 py-3 text-sm">
+                            {issue.practice_words.slice(0, 5).join(" · ")}
+                          </p>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
