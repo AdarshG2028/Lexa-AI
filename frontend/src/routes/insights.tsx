@@ -1,7 +1,32 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AudioLines, ArrowLeft, Check, Play, SpellCheck, Waves } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  AudioLines,
+  ArrowLeft,
+  Check,
+  Gauge,
+  Loader2,
+  SpellCheck,
+  Sparkles,
+  Waves,
+} from "lucide-react";
+
+import {
+  ApiError,
+  runFluency,
+  runGrammar,
+  runPronunciation,
+  runVocabulary,
+  type FluencyAnalysis,
+  type GrammarAnalysis,
+  type PronunciationAnalysis,
+  type VocabularyAnalysis,
+} from "@/lib/api";
 
 export const Route = createFileRoute("/insights")({
+  validateSearch: (search: Record<string, unknown>): { session?: string | undefined } => ({
+    session: typeof search["session"] === "string" ? (search["session"] as string) : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Session report — grammar & pronunciation | Lexa" },
@@ -20,56 +45,364 @@ export const Route = createFileRoute("/insights")({
   component: Insights,
 });
 
-const grammar = [
-  {
-    said: "I go to my friend house and we cook some pasta together.",
-    better: "I went to my friend's house and we cooked some pasta together.",
-    rule: "Past simple + possessive 's",
-    note: "You were describing the weekend, so both verbs move to the past. “friend's house” shows possession.",
-  },
-  {
-    said: "I am only good for cutting the vegetables.",
-    better: "I'm only good at chopping vegetables.",
-    rule: "Collocation & article",
-    note: "“Good at” is the natural pairing, and general foods drop the definite article.",
-  },
-  {
-    said: "We make a sauce with walnut. It was very much delicious.",
-    better: "We made a walnut sauce. It was really delicious.",
-    rule: "Intensifier choice",
-    note: "“Very much” doesn't intensify adjectives — use “really” or just “delicious”.",
-  },
-];
-
-const phonetics = [
-  {
-    word: "walnut",
-    ipa: "/ˈwɔːl.nʌt/",
-    issue: "You said “wal-noot”. The second vowel is a short ʌ, not a long oo.",
-    drill: "walnut · peanut · chestnut",
-    score: 62,
-  },
-  {
-    word: "vegetables",
-    ipa: "/ˈvedʒ.tə.bəlz/",
-    issue: "Four syllables became three-and-a-half — the middle e is swallowed by native speakers too, keep it light.",
-    drill: "vege-ta-bles · comfortable · chocolate",
-    score: 74,
-  },
-  {
-    word: "delicious",
-    ipa: "/dɪˈlɪʃ.əs/",
-    issue: "Stress landed on the first syllable. Push the weight onto “-li-”.",
-    drill: "deLIcious · suspicious · ambitious",
-    score: 58,
-  },
-];
-
 function Insights() {
+  const { session } = Route.useSearch();
+
+  const [grammar, setGrammar] = useState<GrammarAnalysis | null>(null);
+  const [vocabulary, setVocabulary] = useState<VocabularyAnalysis | null>(null);
+  const [fluency, setFluency] = useState<FluencyAnalysis | null>(null);
+  const [pronunciation, setPronunciation] = useState<PronunciationAnalysis | null>(null);
+
+  const [progress, setProgress] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pronRunning, setPronRunning] = useState(false);
+  const [pronError, setPronError] = useState<string | null>(null);
+
+  // Run in sequence rather than in parallel: each one is a provider call, and
+  // a failure part-way through should leave the finished sections on screen.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setProgress("Measuring fluency from your speech timings…");
+        const fluencyResult = await runFluency(session);
+        if (cancelled) return;
+        setFluency(fluencyResult);
+
+        setProgress("Checking grammar…");
+        const grammarResult = await runGrammar(session);
+        if (cancelled) return;
+        setGrammar(grammarResult);
+
+        setProgress("Reviewing word choice…");
+        const vocabularyResult = await runVocabulary(session);
+        if (cancelled) return;
+        setVocabulary(vocabularyResult);
+      } catch (cause) {
+        if (!cancelled) setError(describe(cause));
+      } finally {
+        if (!cancelled) setProgress(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  const analysePronunciation = useCallback(async () => {
+    if (!session) return;
+    setPronRunning(true);
+    setPronError(null);
+    try {
+      setPronunciation(await runPronunciation(session));
+    } catch (cause) {
+      setPronError(describe(cause));
+    } finally {
+      setPronRunning(false);
+    }
+  }, [session]);
+
+  if (!session) {
+    return (
+      <Shell>
+        <section className="relative mx-auto w-full max-w-5xl px-6 pb-16">
+          <h1 className="mt-6 text-4xl sm:text-5xl">No session to report on</h1>
+          <p className="mt-3 max-w-2xl text-muted-foreground">
+            Reports are generated from a conversation you have had. Start one and end it with “End
+            &amp; review”.
+          </p>
+          <Link
+            to="/conversation"
+            className="mt-8 inline-block rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground"
+          >
+            Start a conversation
+          </Link>
+        </section>
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell>
+      <section className="relative mx-auto w-full max-w-5xl px-6 pb-16">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" /> Back home
+        </Link>
+        <h1 className="mt-6 text-4xl sm:text-5xl">Your session report</h1>
+        <p className="mt-3 max-w-2xl text-muted-foreground">
+          {fluency
+            ? `${fluency.timed_words} words spoken over ${Math.round(fluency.analyzed_seconds)} seconds of speech.`
+            : "Reading your conversation back…"}
+        </p>
+
+        {progress && (
+          <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-secondary px-4 py-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> {progress}
+          </p>
+        )}
+        {error && (
+          <p className="mt-4 rounded-2xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
+            {error}
+          </p>
+        )}
+
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat
+            label="Fluency"
+            value={fluency?.fluency_score ?? null}
+            caption={
+              fluency
+                ? `${Math.round(fluency.speaking_rate_wpm)} wpm · ${fluency.pause_count} pauses`
+                : "…"
+            }
+          />
+          <Stat
+            label="Grammar"
+            value={grammar?.grammar_score ?? null}
+            caption={grammar ? `${grammar.issue_count} patterns to fix` : "…"}
+          />
+          <Stat
+            label="Vocabulary"
+            value={vocabulary?.vocabulary_score ?? null}
+            caption={
+              vocabulary
+                ? `${vocabulary.unique_words} unique words · ${vocabulary.lexical_diversity.toFixed(2)} diversity`
+                : "…"
+            }
+          />
+          <Stat
+            label="Pronunciation"
+            value={pronunciation?.pronunciation_score ?? null}
+            caption={pronunciation ? `${pronunciation.issue_count} sounds flagged` : "Not run yet"}
+          />
+        </div>
+      </section>
+
+      {grammar && (
+        <section className="relative mx-auto w-full max-w-5xl px-6 pb-16">
+          <div className="flex items-center gap-3">
+            <SpellCheck className="size-5 text-primary" />
+            <h2 className="text-3xl">Grammar improvements</h2>
+          </div>
+          {grammar.issues.length === 0 ? (
+            <p className="mt-6 text-muted-foreground">
+              No grammar issues were found in what you said.
+            </p>
+          ) : (
+            <div className="mt-6 space-y-4">
+              {grammar.issues.map((issue) => (
+                <article key={issue.id} className="surface rounded-3xl p-6">
+                  <span className="rounded-full bg-secondary px-3 py-1 text-xs text-muted-foreground">
+                    {readable(issue.category)}
+                  </span>
+                  <p className="mt-4 text-sm text-muted-foreground line-through decoration-destructive/60">
+                    {issue.original}
+                  </p>
+                  <p className="mt-2 flex items-start gap-2 text-lg leading-snug">
+                    <Check className="mt-1.5 size-4 shrink-0 text-primary" />
+                    <span>{issue.corrected}</span>
+                  </p>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    {issue.explanation}
+                  </p>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {vocabulary && (
+        <section className="relative mx-auto w-full max-w-5xl px-6 pb-16">
+          <div className="flex items-center gap-3">
+            <Sparkles className="size-5 text-accent" />
+            <h2 className="text-3xl">Word choice</h2>
+          </div>
+          {vocabulary.issues.length === 0 ? (
+            <p className="mt-6 text-muted-foreground">
+              Nothing repetitive or overly basic stood out.
+            </p>
+          ) : (
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {vocabulary.issues.map((issue) => (
+                <article key={issue.id} className="surface rounded-3xl p-6">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h3 className="text-2xl">{issue.text}</h3>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      ×{issue.occurrences}
+                    </span>
+                  </div>
+                  <span className="mt-3 inline-block rounded-full bg-secondary px-3 py-1 text-xs text-muted-foreground">
+                    {readable(issue.type)}
+                  </span>
+                  <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                    “{issue.example}”
+                  </p>
+                  {issue.suggestions.length > 0 && (
+                    <p className="mt-4 rounded-2xl bg-secondary px-4 py-3 text-sm">
+                      Try: {issue.suggestions.join(" · ")}
+                    </p>
+                  )}
+                  {issue.explanation && (
+                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                      {issue.explanation}
+                    </p>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {fluency && (
+        <section className="relative mx-auto w-full max-w-5xl px-6 pb-16">
+          <div className="flex items-center gap-3">
+            <Gauge className="size-5 text-primary" />
+            <h2 className="text-3xl">How you spoke</h2>
+          </div>
+          {fluency.note && <p className="mt-4 text-sm text-muted-foreground">{fluency.note}</p>}
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric label="Speaking rate" value={`${Math.round(fluency.speaking_rate_wpm)} wpm`} />
+            <Metric
+              label="Articulation rate"
+              value={`${Math.round(fluency.articulation_rate_wpm)} wpm`}
+            />
+            <Metric
+              label="Pauses"
+              value={`${fluency.pause_count} (${fluency.long_pause_count} long)`}
+            />
+            <Metric label="Fillers" value={String(fluency.filler_count)} />
+          </div>
+          {fluency.findings.length > 0 && (
+            <div className="mt-6 space-y-3">
+              {fluency.findings.map((finding) => (
+                <div
+                  key={finding.id}
+                  className="surface flex flex-wrap items-baseline gap-3 rounded-2xl px-5 py-4 text-sm"
+                >
+                  <span className="rounded-full bg-secondary px-3 py-1 text-xs text-muted-foreground">
+                    {readable(finding.type)}
+                  </span>
+                  <span className="font-medium">{finding.text}</span>
+                  <span className="text-muted-foreground">×{finding.occurrences}</span>
+                  {finding.detail && (
+                    <span className="text-muted-foreground">{finding.detail}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      <section className="relative mx-auto w-full max-w-5xl px-6 pb-24">
+        <div className="flex items-center gap-3">
+          <AudioLines className="size-5 text-accent" />
+          <h2 className="text-3xl">Phonetic improvements</h2>
+        </div>
+
+        {!pronunciation && (
+          <div className="surface mt-6 rounded-3xl p-8">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Pronunciation is measured by running a phoneme model over your recorded audio. It is
+              by far the slowest step — expect 60–100 seconds on the first run while the model
+              loads, and roughly 1.5× the length of your speech after that. Everything above is
+              already complete, so run this only when you want it.
+            </p>
+            <button
+              onClick={() => void analysePronunciation()}
+              disabled={pronRunning}
+              className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {pronRunning ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Listening to your phonemes…
+                </>
+              ) : (
+                <>
+                  <AudioLines className="size-4" /> Analyse pronunciation
+                </>
+              )}
+            </button>
+            {pronError && (
+              <p className="mt-4 rounded-2xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
+                {pronError}
+              </p>
+            )}
+          </div>
+        )}
+
+        {pronunciation && (
+          <>
+            {pronunciation.note && (
+              <p className="mt-4 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                {pronunciation.note}
+              </p>
+            )}
+            {pronunciation.issues.length > 0 && (
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
+                {pronunciation.issues.map((issue) => (
+                  <article key={issue.id} className="surface flex flex-col rounded-3xl p-6">
+                    <div className="flex items-baseline justify-between">
+                      <h3 className="font-mono text-2xl">/{issue.expected_phoneme}/</h3>
+                      <span className="font-mono text-xs text-accent">
+                        heard /{issue.detected_phoneme}/
+                      </span>
+                    </div>
+                    <div className="mt-4 h-1.5 w-full rounded-full bg-secondary">
+                      <div
+                        className="h-full rounded-full bg-accent"
+                        style={{ width: `${Math.round(issue.confidence * 100)}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {issue.occurrences} occurrences · {Math.round(issue.confidence * 100)}%
+                      confidence
+                    </p>
+                    <p className="mt-4 flex-1 text-sm leading-relaxed text-muted-foreground">
+                      Heard in: {issue.affected_words.join(", ")}
+                    </p>
+                    {issue.practice_words.length > 0 && (
+                      <p className="mt-4 rounded-2xl bg-secondary px-4 py-3 text-sm">
+                        {issue.practice_words.slice(0, 5).join(" · ")}
+                      </p>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="surface glow mt-10 flex flex-col items-center gap-4 rounded-3xl p-10 text-center">
+          <h2 className="text-3xl">Ready for round two?</h2>
+          <p className="max-w-md text-sm text-muted-foreground">
+            Another conversation gives the analysis more to work with — short sessions rarely
+            contain enough evidence to be sure about a pattern.
+          </p>
+          <Link
+            to="/conversation"
+            className="rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
+          >
+            Start another conversation
+          </Link>
+        </div>
+      </section>
+    </Shell>
+  );
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="relative min-h-screen overflow-hidden">
       <div className="halo pointer-events-none absolute inset-x-0 -top-52 h-[620px]" />
-
       <header className="relative mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6">
         <Link to="/" className="flex items-center gap-2">
           <Waves className="size-5 text-primary" />
@@ -82,97 +415,35 @@ function Insights() {
           New session
         </Link>
       </header>
-
-      <section className="relative mx-auto w-full max-w-5xl px-6 pb-16">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" /> Back home
-        </Link>
-        <h1 className="mt-6 text-4xl sm:text-5xl">Your session report</h1>
-        <p className="mt-3 max-w-2xl text-muted-foreground">
-          6 minutes · 214 words spoken · 3 grammar patterns and 3 sounds worth practising.
-        </p>
-
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          <Stat label="Fluency" value="82" caption="Few long pauses" />
-          <Stat label="Grammar" value="71" caption="Tense slips in past events" />
-          <Stat label="Pronunciation" value="65" caption="Vowel length & stress" />
-        </div>
-      </section>
-
-      <section className="relative mx-auto w-full max-w-5xl px-6 pb-16">
-        <div className="flex items-center gap-3">
-          <SpellCheck className="size-5 text-primary" />
-          <h2 className="text-3xl">Grammar improvements</h2>
-        </div>
-        <div className="mt-6 space-y-4">
-          {grammar.map((g) => (
-            <article key={g.said} className="surface rounded-3xl p-6">
-              <span className="rounded-full bg-secondary px-3 py-1 text-xs text-muted-foreground">
-                {g.rule}
-              </span>
-              <p className="mt-4 text-sm text-muted-foreground line-through decoration-destructive/60">
-                {g.said}
-              </p>
-              <p className="mt-2 flex items-start gap-2 text-lg leading-snug">
-                <Check className="mt-1.5 size-4 shrink-0 text-primary" />
-                <span>{g.better}</span>
-              </p>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{g.note}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="relative mx-auto w-full max-w-5xl px-6 pb-24">
-        <div className="flex items-center gap-3">
-          <AudioLines className="size-5 text-accent" />
-          <h2 className="text-3xl">Phonetic improvements</h2>
-        </div>
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
-          {phonetics.map((p) => (
-            <article key={p.word} className="surface flex flex-col rounded-3xl p-6">
-              <div className="flex items-baseline justify-between">
-                <h3 className="text-2xl">{p.word}</h3>
-                <span className="font-mono text-xs text-accent">{p.ipa}</span>
-              </div>
-              <div className="mt-4 h-1.5 w-full rounded-full bg-secondary">
-                <div className="h-full rounded-full bg-accent" style={{ width: `${p.score}%` }} />
-              </div>
-              <p className="mt-4 flex-1 text-sm leading-relaxed text-muted-foreground">{p.issue}</p>
-              <p className="mt-4 rounded-2xl bg-secondary px-4 py-3 text-sm">{p.drill}</p>
-              <button className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90">
-                <Play className="size-4" /> Hear it spoken
-              </button>
-            </article>
-          ))}
-        </div>
-
-        <div className="surface glow mt-10 flex flex-col items-center gap-4 rounded-3xl p-10 text-center">
-          <h2 className="text-3xl">Ready for round two?</h2>
-          <p className="max-w-md text-sm text-muted-foreground">
-            Lexa will steer the next chat toward past-tense storytelling so these fixes get practice.
-          </p>
-          <Link
-            to="/conversation"
-            className="rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
-          >
-            Start another conversation
-          </Link>
-        </div>
-      </section>
+      {children}
     </main>
   );
 }
 
-function Stat({ label, value, caption }: { label: string; value: string; caption: string }) {
+function Stat({ label, value, caption }: { label: string; value: number | null; caption: string }) {
   return (
     <div className="surface rounded-3xl p-6">
       <p className="text-xs tracking-wide text-muted-foreground uppercase">{label}</p>
-      <p className="mt-2 font-display text-4xl text-primary">{value}</p>
+      <p className="mt-2 font-display text-4xl text-primary">{value ?? "—"}</p>
       <p className="mt-1 text-sm text-muted-foreground">{caption}</p>
     </div>
   );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="surface rounded-2xl px-5 py-4">
+      <p className="text-xs tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p className="mt-1 text-lg">{value}</p>
+    </div>
+  );
+}
+
+function readable(value: string): string {
+  return value.replace(/_/g, " ");
+}
+
+function describe(cause: unknown): string {
+  if (cause instanceof ApiError) return cause.message;
+  return "The analysis could not be completed. Check the backend logs.";
 }

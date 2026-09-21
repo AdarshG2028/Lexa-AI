@@ -1,6 +1,17 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, PhoneOff, Volume2, Waves } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader2, Mic, PhoneOff, Send, Square, Volume2, Waves } from "lucide-react";
+
+import {
+  ApiError,
+  endSession,
+  fetchAudio,
+  sendAudioTurn,
+  sendTextTurn,
+  startSession,
+  type TurnResult,
+} from "@/lib/api";
+import { useRecorder } from "@/lib/useRecorder";
 
 export const Route = createFileRoute("/conversation")({
   head: () => ({
@@ -12,46 +23,148 @@ export const Route = createFileRoute("/conversation")({
           "Speak with Lexa in real time. Your transcript is captured for grammar and pronunciation feedback.",
       },
       { property: "og:title", content: "Live session — Lexa" },
-      { property: "og:description", content: "A live voice conversation with your AI speaking partner." },
+      {
+        property: "og:description",
+        content: "A live voice conversation with your AI speaking partner.",
+      },
     ],
   }),
   component: Conversation,
 });
 
-type Turn = { id: number; speaker: "lexa" | "you"; text: string };
-
-const scripted: Turn[] = [
-  { id: 1, speaker: "lexa", text: "Hey! Good to hear you. What did you get up to this weekend?" },
-  { id: 2, speaker: "you", text: "I go to my friend house and we cook some pasta together." },
-  { id: 3, speaker: "lexa", text: "That sounds cozy. Who is the better cook between you two?" },
-  { id: 4, speaker: "you", text: "Definitely him. I am only good for cutting the vegetables." },
-  { id: 5, speaker: "lexa", text: "Ha! Fair division of labour. Did you try anything new this time?" },
-  { id: 6, speaker: "you", text: "Yes, we make a sauce with walnut. It was very much delicious." },
-];
+type Turn = { id: string; speaker: "lexa" | "you"; text: string };
+type Status = "starting" | "idle" | "recording" | "thinking" | "speaking" | "failed";
 
 function Conversation() {
   const navigate = useNavigate();
-  const [turns, setTurns] = useState<Turn[]>(() => scripted.slice(0, 1));
-  const [muted, setMuted] = useState(false);
+  const recorder = useRecorder();
+
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status>("starting");
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
   const [seconds, setSeconds] = useState(0);
+  const [ending, setEnding] = useState(false);
+
   const feedRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => clearInterval(t);
+    let cancelled = false;
+    startSession()
+      .then((session) => {
+        if (cancelled) return;
+        setSessionId(session.id);
+        setStatus("idle");
+      })
+      .catch((cause) => {
+        if (cancelled) return;
+        setError(describe(cause));
+        setStatus("failed");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (turns.length >= scripted.length) return;
-    const t = setTimeout(() => setTurns((prev) => scripted.slice(0, prev.length + 1)), 3200);
-    return () => clearTimeout(t);
-  }, [turns]);
+    if (status === "starting" || status === "failed") return;
+    const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [status]);
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
-  }, [turns]);
+  }, [turns, status]);
 
-  const lexaSpeaking = turns[turns.length - 1]?.speaker === "lexa";
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      audioRef.current = null;
+    };
+  }, []);
+
+  /** Plays the reply and resolves when it finishes, so the UI returns to
+   *  listening only once Lexa has actually stopped talking. */
+  const play = useCallback(async (audioUrl: string) => {
+    const objectUrl = await fetchAudio(audioUrl);
+    const audio = new Audio(objectUrl);
+    audioRef.current = audio;
+    setStatus("speaking");
+
+    await new Promise<void>((resolve) => {
+      const finish = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve();
+      };
+      audio.onended = finish;
+      audio.onerror = finish;
+      audio.play().catch(finish);
+    });
+  }, []);
+
+  const submit = useCallback(
+    async (send: () => Promise<TurnResult>) => {
+      setError(null);
+      setStatus("thinking");
+      try {
+        const result = await send();
+        setTurns((prev) => [
+          ...prev,
+          { id: `${result.turn_id}-you`, speaker: "you", text: result.transcript },
+          { id: result.turn_id, speaker: "lexa", text: result.reply_text },
+        ]);
+        await play(result.audio_url);
+      } catch (cause) {
+        setError(describe(cause));
+      } finally {
+        setStatus("idle");
+      }
+    },
+    [play],
+  );
+
+  const toggleRecording = useCallback(async () => {
+    if (!sessionId) return;
+
+    if (recorder.recording) {
+      const captured = await recorder.stop();
+      if (!captured) {
+        setError("Nothing was recorded. Speak, then tap again to send.");
+        setStatus("idle");
+        return;
+      }
+      await submit(() => sendAudioTurn(sessionId, captured.blob, captured.filename));
+      return;
+    }
+
+    audioRef.current?.pause();
+    if (await recorder.start()) setStatus("recording");
+  }, [recorder, sessionId, submit]);
+
+  const sendDraft = useCallback(async () => {
+    const text = draft.trim();
+    if (!sessionId || !text) return;
+    setDraft("");
+    await submit(() => sendTextTurn(sessionId, text));
+  }, [draft, sessionId, submit]);
+
+  const finish = useCallback(async () => {
+    if (!sessionId) return;
+    setEnding(true);
+    if (recorder.recording) await recorder.stop();
+    audioRef.current?.pause();
+    try {
+      await endSession(sessionId);
+    } catch {
+      // A session that cannot be closed can still be analysed; the report
+      // matters more than the status flag.
+    }
+    navigate({ to: "/insights", search: { session: sessionId } });
+  }, [navigate, recorder, sessionId]);
+
+  const busy = status === "thinking" || status === "speaking";
   const clock = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
@@ -68,44 +181,60 @@ function Conversation() {
         </span>
       </header>
 
-      <section className="relative mx-auto flex w-full max-w-4xl flex-1 flex-col px-6 pb-40">
+      <section className="relative mx-auto flex w-full max-w-4xl flex-1 flex-col px-6 pb-56">
         <div className="flex flex-col items-center py-10">
           <div className="relative flex size-32 items-center justify-center">
-            {lexaSpeaking && (
+            {status === "speaking" && (
               <span className="pulse-ring absolute inset-0 rounded-full border border-primary/50" />
             )}
             <span className="surface flex size-32 items-center justify-center rounded-full">
-              <Volume2 className="size-8 text-primary" />
+              {status === "thinking" ? (
+                <Loader2 className="size-8 animate-spin text-primary" />
+              ) : (
+                <Volume2 className="size-8 text-primary" />
+              )}
             </span>
           </div>
-          <p className="mt-5 text-sm text-muted-foreground">
-            {lexaSpeaking ? "Lexa is speaking…" : muted ? "Microphone muted" : "Listening to you…"}
-          </p>
+          <p className="mt-5 text-sm text-muted-foreground">{caption(status)}</p>
           <div className="mt-4 flex h-8 items-end gap-1.5">
             {Array.from({ length: 9 }).map((_, i) => (
               <span
                 key={i}
-                className={`bar-bounce w-1.5 rounded-full ${lexaSpeaking ? "bg-primary" : "bg-accent"} ${muted ? "opacity-25" : ""}`}
+                className={`bar-bounce w-1.5 rounded-full ${status === "speaking" ? "bg-primary" : "bg-accent"} ${status === "recording" || status === "speaking" ? "" : "opacity-25"}`}
                 style={{ height: `${12 + ((i * 7) % 20)}px`, animationDelay: `${i * 0.09}s` }}
               />
             ))}
           </div>
         </div>
 
-        <div ref={feedRef} className="max-h-[42vh] space-y-4 overflow-y-auto pr-1">
-          {turns.map((t) => (
-            <div key={t.id} className={t.speaker === "you" ? "flex justify-end" : "flex justify-start"}>
+        {(error ?? recorder.error) && (
+          <div className="mb-4 rounded-2xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
+            {error ?? recorder.error}
+          </div>
+        )}
+
+        <div ref={feedRef} className="max-h-[38vh] space-y-4 overflow-y-auto pr-1">
+          {turns.length === 0 && status !== "starting" && (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Tap the microphone and say something to begin.
+            </p>
+          )}
+          {turns.map((turn) => (
+            <div
+              key={turn.id}
+              className={turn.speaker === "you" ? "flex justify-end" : "flex justify-start"}
+            >
               <div
                 className={
-                  t.speaker === "you"
+                  turn.speaker === "you"
                     ? "max-w-[78%] rounded-3xl rounded-br-md bg-secondary px-5 py-3.5 text-sm leading-relaxed"
                     : "surface max-w-[78%] rounded-3xl rounded-bl-md px-5 py-3.5 text-sm leading-relaxed text-muted-foreground"
                 }
               >
                 <span className="mb-1 block text-[11px] tracking-wide uppercase opacity-60">
-                  {t.speaker === "you" ? "You" : "Lexa"}
+                  {turn.speaker === "you" ? "You" : "Lexa"}
                 </span>
-                {t.text}
+                {turn.text}
               </div>
             </div>
           ))}
@@ -113,24 +242,77 @@ function Conversation() {
       </section>
 
       <div className="fixed inset-x-0 bottom-0">
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-center gap-4 px-6 pb-8">
+        <div className="mx-auto flex w-full max-w-4xl flex-col items-center gap-3 px-6 pb-8">
+          <div className="surface flex w-full max-w-xl items-center gap-2 rounded-full px-2 py-2">
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void sendDraft();
+              }}
+              disabled={!sessionId || busy || recorder.recording}
+              placeholder="…or type a turn instead"
+              className="flex-1 bg-transparent px-4 py-2 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
+            />
+            <button
+              onClick={() => void sendDraft()}
+              disabled={!sessionId || busy || !draft.trim()}
+              aria-label="Send typed turn"
+              className="flex size-9 items-center justify-center rounded-full bg-secondary transition-colors hover:bg-muted disabled:opacity-40"
+            >
+              <Send className="size-4" />
+            </button>
+          </div>
+
           <div className="surface flex items-center gap-3 rounded-full px-4 py-3">
             <button
-              onClick={() => setMuted((m) => !m)}
-              aria-label={muted ? "Unmute microphone" : "Mute microphone"}
-              className="flex size-12 items-center justify-center rounded-full bg-secondary transition-colors hover:bg-muted"
+              onClick={() => void toggleRecording()}
+              disabled={!sessionId || busy}
+              aria-label={recorder.recording ? "Stop recording and send" : "Start recording"}
+              className={`flex size-12 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+                recorder.recording
+                  ? "bg-destructive text-destructive-foreground"
+                  : "bg-secondary hover:bg-muted"
+              }`}
             >
-              {muted ? <MicOff className="size-5" /> : <Mic className="size-5 text-accent" />}
+              {recorder.recording ? (
+                <Square className="size-5" />
+              ) : (
+                <Mic className="size-5 text-accent" />
+              )}
             </button>
             <button
-              onClick={() => navigate({ to: "/insights" })}
-              className="flex items-center gap-2 rounded-full bg-destructive px-6 py-3 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90"
+              onClick={() => void finish()}
+              disabled={!sessionId || ending}
+              className="flex items-center gap-2 rounded-full bg-destructive px-6 py-3 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              <PhoneOff className="size-4" /> End & review
+              <PhoneOff className="size-4" /> {ending ? "Ending…" : "End & review"}
             </button>
           </div>
         </div>
       </div>
     </main>
   );
+}
+
+function caption(status: Status): string {
+  switch (status) {
+    case "starting":
+      return "Starting your session…";
+    case "recording":
+      return "Recording — tap the square when you have finished.";
+    case "thinking":
+      return "Lexa is thinking…";
+    case "speaking":
+      return "Lexa is speaking…";
+    case "failed":
+      return "Could not start a session.";
+    default:
+      return "Tap the microphone to speak.";
+  }
+}
+
+function describe(cause: unknown): string {
+  if (cause instanceof ApiError) return cause.message;
+  return "Something went wrong. Check the backend logs and try again.";
 }
