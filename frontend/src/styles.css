@@ -10,17 +10,20 @@
  * The @theme inline block maps CSS custom properties to Tailwind utility
  * classes (e.g. --color-primary -> bg-primary, text-primary).
  *
- * The :root and .dark blocks define the actual color values using oklch.
+ * The :root block defines the actual color values using oklch.
  * All colors MUST use oklch format.
  *
+ * The app never sets a `.dark` class, so :root IS the (dark) theme in use.
+ *
  * To add a new semantic color:
- * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 1. Add the variable to :root
  * 2. Register it in @theme inline as --color-<name>: var(--<name>)
  */
 
 @theme inline {
   --font-display: var(--font-display);
   --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
   --radius-sm: calc(var(--radius) - 4px);
 
   --radius-md: calc(var(--radius) - 2px);
@@ -65,88 +68,49 @@
 }
 
 :root {
-  --radius: 1rem;
-  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --radius: 0.625rem;
+  --font-display: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
-  --background: oklch(0.19 0.03 200);
-  --foreground: oklch(0.96 0.012 95);
-  --card: oklch(0.235 0.032 200);
-  --card-foreground: oklch(0.96 0.012 95);
-  --popover: oklch(0.235 0.032 200);
-  --popover-foreground: oklch(0.96 0.012 95);
-  --primary: oklch(0.82 0.15 78);
-  --primary-foreground: oklch(0.2 0.04 60);
-  --secondary: oklch(0.29 0.036 200);
-  --secondary-foreground: oklch(0.96 0.012 95);
-  --muted: oklch(0.27 0.03 200);
-  --muted-foreground: oklch(0.73 0.025 190);
-  --accent: oklch(0.72 0.12 190);
-  --accent-foreground: oklch(0.19 0.03 200);
-  --destructive: oklch(0.63 0.19 25);
+  /* Monochrome ground: near-black rather than pure black, so panels can sit
+     one step above it without a hard seam. Mint is the single accent hue -
+     used for the one thing per screen that is live or correct. */
+  --background: oklch(0.15 0.004 260);
+  --foreground: oklch(0.97 0.003 260);
+  --card: oklch(0.195 0.005 260);
+  --card-foreground: oklch(0.97 0.003 260);
+  --popover: oklch(0.195 0.005 260);
+  --popover-foreground: oklch(0.97 0.003 260);
+  --primary: oklch(0.97 0.003 260);
+  --primary-foreground: oklch(0.16 0.004 260);
+  --secondary: oklch(0.24 0.006 260);
+  --secondary-foreground: oklch(0.97 0.003 260);
+  --muted: oklch(0.22 0.005 260);
+  --muted-foreground: oklch(0.63 0.008 260);
+  --accent: oklch(0.8 0.11 165);
+  --accent-foreground: oklch(0.16 0.03 165);
+  --destructive: oklch(0.62 0.19 25);
   --destructive-foreground: oklch(0.97 0.01 95);
-  --border: oklch(0.33 0.035 200);
-  --input: oklch(0.33 0.035 200);
-  --ring: oklch(0.82 0.15 78);
-  --chart-1: oklch(0.82 0.15 78);
-  --chart-2: oklch(0.72 0.12 190);
-  --chart-3: oklch(0.65 0.14 330);
-  --chart-4: oklch(0.75 0.13 145);
-  --chart-5: oklch(0.7 0.16 40);
-  --sidebar: oklch(0.235 0.032 200);
-  --sidebar-foreground: oklch(0.96 0.012 95);
-  --sidebar-primary: oklch(0.82 0.15 78);
-  --sidebar-primary-foreground: oklch(0.2 0.04 60);
-  --sidebar-accent: oklch(0.29 0.036 200);
-  --sidebar-accent-foreground: oklch(0.96 0.012 95);
-  --sidebar-border: oklch(0.33 0.035 200);
-  --sidebar-ring: oklch(0.82 0.15 78);
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.8 0.11 165);
+  --chart-1: oklch(0.8 0.11 165);
+  --chart-2: oklch(0.97 0.003 260);
+  --chart-3: oklch(0.63 0.008 260);
+  --chart-4: oklch(0.45 0.006 260);
+  --chart-5: oklch(0.62 0.19 25);
+  --sidebar: oklch(0.195 0.005 260);
+  --sidebar-foreground: oklch(0.97 0.003 260);
+  --sidebar-primary: oklch(0.8 0.11 165);
+  --sidebar-primary-foreground: oklch(0.16 0.03 165);
+  --sidebar-accent: oklch(0.24 0.006 260);
+  --sidebar-accent-foreground: oklch(0.97 0.003 260);
+  --sidebar-border: oklch(1 0 0 / 11%);
+  --sidebar-ring: oklch(0.8 0.11 165);
 
-  --gradient-halo: radial-gradient(
-    60% 60% at 50% 40%,
-    oklch(0.82 0.15 78 / 0.28) 0%,
-    oklch(0.72 0.12 190 / 0.12) 45%,
-    transparent 75%
-  );
-  --gradient-ink: linear-gradient(160deg, oklch(0.22 0.032 200) 0%, oklch(0.17 0.028 205) 100%);
-  --shadow-glow: 0 0 0 1px oklch(0.82 0.15 78 / 0.25), 0 24px 60px -20px oklch(0.82 0.15 78 / 0.35);
-  --shadow-soft: 0 20px 50px -28px oklch(0 0 0 / 0.8);
-}
-
-
-.dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --shadow-glow: 0 0 0 1px oklch(0.8 0.11 165 / 0.3), 0 20px 50px -22px oklch(0.8 0.11 165 / 0.45);
+  --shadow-soft: 0 20px 50px -28px oklch(0 0 0 / 0.85);
 }
 
 @layer base {
@@ -165,21 +129,39 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
-  h1, h2, h3 {
+  h1,
+  h2,
+  h3 {
     font-family: var(--font-display);
-    font-weight: 400;
-    letter-spacing: -0.01em;
+    font-weight: 500;
+    letter-spacing: -0.02em;
   }
 }
 
+/* A dithered, dot-matrix halo instead of a soft colour bloom - the texture
+   the reference uses instead of a gradient to signal "engineered", not
+   "designed". Two layers: a dot grid, faded out radially so it reads as a
+   sphere rather than a rectangle. */
 @utility halo {
-  background-image: var(--gradient-halo);
+  background-image:
+    radial-gradient(circle at 1px 1px, oklch(1 0 0 / 0.5) 1px, transparent 0),
+    radial-gradient(circle at 1px 1px, oklch(1 0 0 / 0.16) 1px, transparent 0);
+  background-size:
+    15px 15px,
+    15px 15px;
+  background-position:
+    0 0,
+    7.5px 7.5px;
+  mask-image: radial-gradient(58% 62% at 50% 34%, black 0%, black 35%, transparent 72%);
+  -webkit-mask-image: radial-gradient(58% 62% at 50% 34%, black 0%, black 35%, transparent 72%);
 }
 
+/* Flat panel with a hairline border - the reference's cards carry almost no
+   shadow at all; separation comes from the border and the one step of
+   lightness between --card and --background. */
 @utility surface {
-  background-image: var(--gradient-ink);
+  background-color: var(--color-card);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-soft);
 }
 
 @utility glow {
@@ -187,9 +169,18 @@
 }
 
 @keyframes pulse-ring {
-  0% { transform: scale(1); opacity: 0.55; }
-  70% { transform: scale(1.35); opacity: 0; }
-  100% { transform: scale(1.35); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
 }
 
 @utility pulse-ring {
@@ -197,10 +188,36 @@
 }
 
 @keyframes bar-bounce {
-  0%, 100% { transform: scaleY(0.25); }
-  50% { transform: scaleY(1); }
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
 }
 
 @utility bar-bounce {
   animation: bar-bounce 1s ease-in-out infinite;
+}
+
+/* A static, low-amplitude waveform silhouette used as a background flourish
+   behind the hero transcript card - the still counterpart to the live
+   bar-bounce meter used once a session is actually recording. */
+@utility waveform-static {
+  background-image: repeating-linear-gradient(
+    90deg,
+    oklch(1 0 0 / 0.14) 0px,
+    oklch(1 0 0 / 0.14) 2px,
+    transparent 2px,
+    transparent 6px
+  );
+  mask-image: linear-gradient(90deg, transparent 0%, black 15%, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    black 15%,
+    black 85%,
+    transparent 100%
+  );
 }

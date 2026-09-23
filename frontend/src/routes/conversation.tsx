@@ -173,10 +173,10 @@ function Conversation() {
 
       <header className="relative mx-auto flex w-full max-w-4xl items-center justify-between px-6 py-6">
         <Link to="/" className="flex items-center gap-2">
-          <Waves className="size-5 text-primary" />
+          <Waves className="size-5 text-accent" />
           <span className="tracking-tight">Lexa</span>
         </Link>
-        <span className="rounded-full border border-border px-3 py-1 font-mono text-xs text-muted-foreground">
+        <span className="rounded-full border border-border px-3 py-1 font-mono text-xs tabular-nums text-muted-foreground">
           {clock}
         </span>
       </header>
@@ -185,22 +185,24 @@ function Conversation() {
         <div className="flex flex-col items-center py-10">
           <div className="relative flex size-32 items-center justify-center">
             {status === "speaking" && (
-              <span className="pulse-ring absolute inset-0 rounded-full border border-primary/50" />
+              <span className="pulse-ring absolute inset-0 rounded-full border border-accent/50" />
             )}
             <span className="surface flex size-32 items-center justify-center rounded-full">
               {status === "thinking" ? (
-                <Loader2 className="size-8 animate-spin text-primary" />
+                <Loader2 className="size-8 animate-spin text-accent" />
               ) : (
-                <Volume2 className="size-8 text-primary" />
+                <Volume2 className="size-8 text-accent" />
               )}
             </span>
           </div>
-          <p className="mt-5 text-sm text-muted-foreground">{caption(status)}</p>
+          <p className="mt-5 font-mono text-xs tracking-wide text-muted-foreground uppercase">
+            {caption(status)}
+          </p>
           <div className="mt-4 flex h-8 items-end gap-1.5">
             {Array.from({ length: 9 }).map((_, i) => (
               <span
                 key={i}
-                className={`bar-bounce w-1.5 rounded-full ${status === "speaking" ? "bg-primary" : "bg-accent"} ${status === "recording" || status === "speaking" ? "" : "opacity-25"}`}
+                className={`bar-bounce w-1.5 rounded-full ${status === "speaking" ? "bg-accent" : "bg-muted-foreground"} ${status === "recording" || status === "speaking" ? "" : "opacity-25"}`}
                 style={{ height: `${12 + ((i * 7) % 20)}px`, animationDelay: `${i * 0.09}s` }}
               />
             ))}
@@ -208,7 +210,7 @@ function Conversation() {
         </div>
 
         {(error ?? recorder.error) && (
-          <div className="mb-4 rounded-2xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
+          <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
             {error ?? recorder.error}
           </div>
         )}
@@ -227,11 +229,11 @@ function Conversation() {
               <div
                 className={
                   turn.speaker === "you"
-                    ? "max-w-[78%] rounded-3xl rounded-br-md bg-secondary px-5 py-3.5 text-sm leading-relaxed"
-                    : "surface max-w-[78%] rounded-3xl rounded-bl-md px-5 py-3.5 text-sm leading-relaxed text-muted-foreground"
+                    ? "max-w-[78%] rounded-xl rounded-br-sm bg-secondary px-5 py-3.5 text-sm leading-relaxed"
+                    : "surface max-w-[78%] rounded-xl rounded-bl-sm px-5 py-3.5 text-sm leading-relaxed text-muted-foreground"
                 }
               >
-                <span className="mb-1 block text-[11px] tracking-wide uppercase opacity-60">
+                <span className="mb-1 block font-mono text-[11px] tracking-wide uppercase opacity-60">
                   {turn.speaker === "you" ? "You" : "Lexa"}
                 </span>
                 {turn.text}
@@ -243,7 +245,7 @@ function Conversation() {
 
       <div className="fixed inset-x-0 bottom-0">
         <div className="mx-auto flex w-full max-w-4xl flex-col items-center gap-3 px-6 pb-8">
-          <div className="surface flex w-full max-w-xl items-center gap-2 rounded-full px-2 py-2">
+          <div className="surface flex w-full max-w-xl items-center gap-2 rounded-2xl px-2 py-2">
             <input
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
@@ -264,7 +266,7 @@ function Conversation() {
             </button>
           </div>
 
-          <div className="surface flex items-center gap-3 rounded-full px-4 py-3">
+          <div className="surface flex items-center gap-3 rounded-2xl px-4 py-3">
             <button
               onClick={() => void toggleRecording()}
               disabled={!sessionId || busy}
@@ -284,7 +286,7 @@ function Conversation() {
             <button
               onClick={() => void finish()}
               disabled={!sessionId || ending}
-              className="flex items-center gap-2 rounded-full bg-destructive px-6 py-3 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-destructive px-6 py-3 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               <PhoneOff className="size-4" /> {ending ? "Ending…" : "End & review"}
             </button>
