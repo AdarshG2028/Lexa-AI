@@ -67,6 +67,35 @@ async def test_stt_maps_response_to_transcription(client, groq_settings):
 
 
 @respx.mock
+async def test_stt_pins_the_language_to_skip_auto_detection(client, groq_settings):
+    """Without this, Whisper guesses the spoken language per clip and can
+    transcribe English audio as another language's phonetics instead of
+    English words - not a translation, just wrong."""
+    route = respx.post(f"{BASE_URL}/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "Hi", "language": "en"})
+    )
+    provider = GroqSpeechToTextProvider(client, groq_settings)
+    await provider.transcribe(b"fake-wav", "a.wav", "audio/wav")
+
+    sent = route.calls.last.request.content
+    assert b'name="language"' in sent
+    language_part = sent.split(b'name="language"', 1)[1]
+    assert language_part.strip().startswith(b"en")
+
+
+@respx.mock
+async def test_a_blank_configured_language_restores_auto_detection(client, groq_settings):
+    other = groq_settings.model_copy(update={"groq_stt_language": ""})
+    route = respx.post(f"{BASE_URL}/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "Hi", "language": "fr"})
+    )
+    provider = GroqSpeechToTextProvider(client, other)
+    await provider.transcribe(b"fake-wav", "a.wav", "audio/wav")
+
+    assert b'name="language"' not in route.calls.last.request.content
+
+
+@respx.mock
 async def test_stt_rejects_a_response_missing_text(client, groq_settings):
     respx.post(f"{BASE_URL}/audio/transcriptions").mock(
         return_value=httpx.Response(200, json={"unexpected": "shape"})

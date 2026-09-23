@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_stt_model: str = "whisper-large-v3-turbo"
+    # Without this, Whisper auto-detects the spoken language per clip and
+    # occasionally guesses wrong - not a translation, but the same English
+    # audio transcribed as if it were another language's phonetics, which
+    # reads as nonsense. This app coaches spoken English specifically, so
+    # there is never a reason to guess. ISO-639-1; blank restores auto-detect.
+    groq_stt_language: str = "en"
     groq_llm_model: str = "openai/gpt-oss-120b"
     # Falls back to groq_llm_model when blank.
     groq_grammar_model: str = ""

@@ -10,19 +10,27 @@ class GroqSpeechToTextProvider:
     def __init__(self, client: GroqClient, settings: Settings) -> None:
         self._client = client
         self._model = settings.groq_stt_model
+        self._language = settings.groq_stt_language
 
     async def transcribe(
         self, audio: bytes, filename: str, mime_type: str
     ) -> Transcription:
+        data = {
+            "model": self._model,
+            "response_format": "verbose_json",
+            # Word timings are what the fluency analysis is built on, and
+            # they cost nothing extra here.
+            "timestamp_granularities[]": "word",
+        }
+        if self._language:
+            # Skips Whisper's own language auto-detection, which is the part
+            # that occasionally mis-guesses and transcribes English audio as
+            # another language's phonetics instead of English words.
+            data["language"] = self._language
+
         response = await self._client.post(
             "/audio/transcriptions",
-            data={
-                "model": self._model,
-                "response_format": "verbose_json",
-                # Word timings are what the fluency analysis is built on, and
-                # they cost nothing extra here.
-                "timestamp_granularities[]": "word",
-            },
+            data=data,
             files={"file": (filename, audio, mime_type)},
         )
         try:
