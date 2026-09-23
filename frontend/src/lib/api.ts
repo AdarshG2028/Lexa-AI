@@ -140,6 +140,44 @@ export class ApiError extends Error {
   }
 }
 
+// Both our own per-request limiter and a provider's own quota surface as
+// this pair of codes. Grouped here so the UI can show "wait and try again"
+// once, instead of every screen re-deriving which codes mean that.
+const RATE_LIMIT_CODES = new Set(["RATE_LIMITED", "PROVIDER_RATE_LIMITED"]);
+
+export type ErrorSummary = {
+  message: string;
+  /** True for our own per-IP limiter or a provider's own quota - both mean
+   *  "wait and retry", not "something is broken". */
+  isRateLimited: boolean;
+  /** Seconds until retrying is likely to work, when the server knows one.
+   *  A provider's own quota often does not give an exact figure. */
+  retryAfterSeconds: number | null;
+};
+
+/** Turns any thrown value into copy the UI can show directly, so no screen
+ *  has to know the shape of ApiError or re-derive what a rate limit is. */
+export function summarizeError(cause: unknown): ErrorSummary {
+  if (cause instanceof ApiError) {
+    const isRateLimited = RATE_LIMIT_CODES.has(cause.code);
+    const details = cause.details;
+    const retryAfterSeconds =
+      isRateLimited &&
+      details &&
+      typeof details === "object" &&
+      "retry_after_seconds" in details &&
+      typeof (details as { retry_after_seconds: unknown }).retry_after_seconds === "number"
+        ? (details as { retry_after_seconds: number }).retry_after_seconds
+        : null;
+    return { message: cause.message, isRateLimited, retryAfterSeconds };
+  }
+  return {
+    message: "Something went wrong. Check the backend logs and try again.",
+    isRateLimited: false,
+    retryAfterSeconds: null,
+  };
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {

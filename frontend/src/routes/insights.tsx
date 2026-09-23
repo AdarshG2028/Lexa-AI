@@ -4,6 +4,7 @@ import {
   AudioLines,
   ArrowLeft,
   Check,
+  Clock,
   Gauge,
   Loader2,
   SpellCheck,
@@ -12,17 +13,19 @@ import {
 } from "lucide-react";
 
 import {
-  ApiError,
   PRONUNCIATION_ENABLED,
   runFluency,
   runGrammar,
   runPronunciation,
   runVocabulary,
+  summarizeError,
+  type ErrorSummary,
   type FluencyAnalysis,
   type GrammarAnalysis,
   type PronunciationAnalysis,
   type VocabularyAnalysis,
 } from "@/lib/api";
+import { formatWait } from "@/lib/format";
 
 export const Route = createFileRoute("/insights")({
   validateSearch: (search: Record<string, unknown>): { session?: string | undefined } => ({
@@ -55,9 +58,9 @@ function Insights() {
   const [pronunciation, setPronunciation] = useState<PronunciationAnalysis | null>(null);
 
   const [progress, setProgress] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorSummary | null>(null);
   const [pronRunning, setPronRunning] = useState(false);
-  const [pronError, setPronError] = useState<string | null>(null);
+  const [pronError, setPronError] = useState<ErrorSummary | null>(null);
 
   // Run in sequence rather than in parallel: each one is a provider call, and
   // a failure part-way through should leave the finished sections on screen.
@@ -82,7 +85,7 @@ function Insights() {
         if (cancelled) return;
         setVocabulary(vocabularyResult);
       } catch (cause) {
-        if (!cancelled) setError(describe(cause));
+        if (!cancelled) setError(summarizeError(cause));
       } finally {
         if (!cancelled) setProgress(null);
       }
@@ -100,7 +103,7 @@ function Insights() {
     try {
       setPronunciation(await runPronunciation(session));
     } catch (cause) {
-      setPronError(describe(cause));
+      setPronError(summarizeError(cause));
     } finally {
       setPronRunning(false);
     }
@@ -147,11 +150,7 @@ function Insights() {
             <Loader2 className="size-4 animate-spin" /> {progress}
           </p>
         )}
-        {error && (
-          <p className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {error && <ErrorBanner error={error} className="mt-4" />}
 
         <div
           className={`mt-8 grid gap-4 sm:grid-cols-2 ${PRONUNCIATION_ENABLED ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}
@@ -340,11 +339,7 @@ function Insights() {
                     </>
                   )}
                 </button>
-                {pronError && (
-                  <p className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
-                    {pronError}
-                  </p>
-                )}
+                {pronError && <ErrorBanner error={pronError} className="mt-4" />}
               </div>
             )}
 
@@ -454,7 +449,30 @@ function readable(value: string): string {
   return value.replace(/_/g, " ");
 }
 
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) return cause.message;
-  return "The analysis could not be completed. Check the backend logs.";
+function ErrorBanner({ error, className = "" }: { error: ErrorSummary; className?: string }) {
+  if (error.isRateLimited) {
+    return (
+      <div
+        className={`flex items-start gap-3 rounded-xl border border-border bg-secondary px-5 py-3 text-sm ${className}`}
+      >
+        <Clock className="mt-0.5 size-4 shrink-0 text-accent" />
+        <span>
+          {error.message}
+          {error.retryAfterSeconds !== null && (
+            <span className="text-muted-foreground">
+              {" "}
+              You can try again in about {formatWait(error.retryAfterSeconds)}.
+            </span>
+          )}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <p
+      className={`rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive ${className}`}
+    >
+      {error.message}
+    </p>
+  );
 }

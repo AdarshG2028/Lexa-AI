@@ -7,6 +7,7 @@ from app.config import Settings
 from app.core.errors import (
     ConfigError,
     ProviderBadResponseError,
+    ProviderRateLimitedError,
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
@@ -78,12 +79,22 @@ class DeepgramClient:
                 "https://developers.deepgram.com/docs/tts-models"
             )
         if response.status_code == 429:
-            return ProviderUnavailableError(
-                "Deepgram is rate limiting requests. Try again shortly."
+            return ProviderRateLimitedError(
+                retry_after_seconds=self._retry_after_seconds(response),
             )
         if response.status_code >= 500:
             return ProviderUnavailableError()
         return ProviderBadResponseError(details=detail)
+
+    @staticmethod
+    def _retry_after_seconds(response: httpx.Response) -> int | None:
+        header = response.headers.get("retry-after")
+        if header is None:
+            return None
+        try:
+            return max(0, int(float(header)))
+        except ValueError:
+            return None
 
     @staticmethod
     def _extract_message(response: httpx.Response) -> str:

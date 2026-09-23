@@ -1,16 +1,18 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Mic, PhoneOff, Send, Square, Volume2, Waves } from "lucide-react";
+import { Clock, Loader2, Mic, PhoneOff, Send, Square, Volume2, Waves } from "lucide-react";
 
 import {
-  ApiError,
   endSession,
   fetchAudio,
   sendAudioTurn,
   sendTextTurn,
   startSession,
+  summarizeError,
+  type ErrorSummary,
   type TurnResult,
 } from "@/lib/api";
+import { formatWait } from "@/lib/format";
 import { useRecorder, VAD_REDEMPTION_MS } from "@/lib/useRecorder";
 
 export const Route = createFileRoute("/conversation")({
@@ -41,7 +43,7 @@ function Conversation() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("starting");
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorSummary | null>(null);
   const [draft, setDraft] = useState("");
   const [seconds, setSeconds] = useState(0);
   const [ending, setEnding] = useState(false);
@@ -59,7 +61,7 @@ function Conversation() {
       })
       .catch((cause) => {
         if (cancelled) return;
-        setError(describe(cause));
+        setError(summarizeError(cause));
         setStatus("failed");
       });
     return () => {
@@ -116,7 +118,7 @@ function Conversation() {
         ]);
         await play(result.audio_url);
       } catch (cause) {
-        setError(describe(cause));
+        setError(summarizeError(cause));
       } finally {
         setStatus("idle");
       }
@@ -138,7 +140,11 @@ function Conversation() {
     if (recorder.recording) {
       const captured = await recorder.stop();
       if (!captured) {
-        setError("Nothing was recorded. Speak, then tap again to send.");
+        setError({
+          message: "Nothing was recorded. Speak, then tap again to send.",
+          isRateLimited: false,
+          retryAfterSeconds: null,
+        });
         setStatus("idle");
         return;
       }
@@ -223,11 +229,30 @@ function Conversation() {
           </div>
         </div>
 
-        {(error ?? recorder.error) && (
+        {recorder.error && (
           <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
-            {error ?? recorder.error}
+            {recorder.error}
           </div>
         )}
+        {error &&
+          (error.isRateLimited ? (
+            <div className="mb-4 flex items-start gap-3 rounded-xl border border-border bg-secondary px-5 py-3 text-sm">
+              <Clock className="mt-0.5 size-4 shrink-0 text-accent" />
+              <span>
+                {error.message}
+                {error.retryAfterSeconds !== null && (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    You can try again in about {formatWait(error.retryAfterSeconds)}.
+                  </span>
+                )}
+              </span>
+            </div>
+          ) : (
+            <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
+              {error.message}
+            </div>
+          ))}
 
         <div ref={feedRef} className="max-h-[38vh] space-y-4 overflow-y-auto pr-1">
           {turns.length === 0 && status !== "starting" && (
@@ -329,9 +354,4 @@ function caption(status: Status): string {
     default:
       return "Tap the microphone to speak.";
   }
-}
-
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) return cause.message;
-  return "Something went wrong. Check the backend logs and try again.";
 }

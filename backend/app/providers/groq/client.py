@@ -7,6 +7,7 @@ from app.config import Settings
 from app.core.errors import (
     ConfigError,
     ProviderBadResponseError,
+    ProviderRateLimitedError,
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
@@ -106,12 +107,26 @@ class GroqClient:
                 f"The provider said: {detail}"
             )
         if response.status_code == 429:
-            return ProviderUnavailableError(
-                "The AI provider is rate limiting requests. Try again shortly."
+            retry_after = self._retry_after_seconds(response)
+            return ProviderRateLimitedError(
+                retry_after_seconds=retry_after,
             )
         if response.status_code >= 500:
             return ProviderUnavailableError()
         return ProviderBadResponseError(details=detail)
+
+    @staticmethod
+    def _retry_after_seconds(response: httpx.Response) -> int | None:
+        """Groq sends a Retry-After header on 429s when it knows the wait,
+        not on every one - callers must treat a missing value as unknown
+        rather than assuming a fixed wait."""
+        header = response.headers.get("retry-after")
+        if header is None:
+            return None
+        try:
+            return max(0, int(float(header)))
+        except ValueError:
+            return None
 
     @staticmethod
     def _is_model_access_issue(detail: str) -> bool:

@@ -8,6 +8,7 @@ from app.config import Settings
 from app.core.errors import (
     ConfigError,
     ProviderBadResponseError,
+    ProviderRateLimitedError,
     ProviderUnavailableError,
 )
 from app.providers.deepgram.client import DeepgramClient
@@ -86,11 +87,23 @@ async def test_unknown_voice_becomes_config_error_naming_the_docs(client, dg_set
 
 
 @respx.mock
-async def test_rate_limit_becomes_provider_unavailable(client, dg_settings):
+async def test_rate_limit_becomes_a_distinct_retryable_error(client, dg_settings):
     respx.post(SPEAK_URL).mock(return_value=httpx.Response(429, text="slow down"))
 
-    with pytest.raises(ProviderUnavailableError):
+    with pytest.raises(ProviderRateLimitedError) as excinfo:
         await DeepgramTextToSpeechProvider(client, dg_settings).synthesize("Hi")
+    assert excinfo.value.details["retry_after_seconds"] is None
+
+
+@respx.mock
+async def test_rate_limit_carries_the_providers_retry_after_seconds(client, dg_settings):
+    respx.post(SPEAK_URL).mock(
+        return_value=httpx.Response(429, text="slow down", headers={"Retry-After": "5"})
+    )
+
+    with pytest.raises(ProviderRateLimitedError) as excinfo:
+        await DeepgramTextToSpeechProvider(client, dg_settings).synthesize("Hi")
+    assert excinfo.value.details["retry_after_seconds"] == 5
 
 
 @respx.mock

@@ -95,6 +95,17 @@ class ProviderUnavailableError(AppError):
     message = "The AI provider is currently unavailable."
 
 
+class ProviderRateLimitedError(AppError):
+    """The provider itself is rate limiting or has exhausted its quota -
+    distinct from our own per-IP RateLimitedError, and from a generic
+    PROVIDER_UNAVAILABLE, so the frontend can show "try again later" rather
+    than a plain failure."""
+
+    code = "PROVIDER_RATE_LIMITED"
+    status_code = 429
+    message = "The AI provider's usage limit was reached. Please try again shortly."
+
+
 class ProviderTimeoutError(AppError):
     code = "PROVIDER_TIMEOUT"
     status_code = 504
