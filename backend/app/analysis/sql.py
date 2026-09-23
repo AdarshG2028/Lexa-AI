@@ -1,10 +1,11 @@
 import json
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.errors import StorageError
@@ -56,28 +57,52 @@ class SqlAnalysisRepository:
             db.add(row)
         return row
 
+    async def _save(
+        self, session_id: str, apply: Callable[[SpeechAnalysisRow], None]
+    ) -> None:
+        """Creates the session's analysis row on the first section saved, or
+        updates it on every one after. Two sections saved close together (the
+        report page runs fluency, grammar and vocabulary back to back, and a
+        page refresh mid-run can overlap a fresh set of requests with ones
+        still in flight) can both see no row yet and both try to create it;
+        the database accepts only one, and the loser retries once against the
+        row the winner just committed - so the loser updates instead of
+        failing, rather than surfacing as "could not be saved" when the data
+        was in fact saved.
+        """
+        for attempt in range(2):
+            try:
+                async with self._session_factory() as db:
+                    row = await self._row_for(db, session_id)
+                    apply(row)
+                    await db.commit()
+                return
+            except IntegrityError:
+                if attempt == 1:
+                    raise
+
     async def save_grammar(self, analysis: GrammarAnalysis) -> GrammarAnalysis:
+        def apply(row: SpeechAnalysisRow) -> None:
+            row.grammar_provider = analysis.provider
+            row.grammar_created_at = analysis.created_at
+            row.grammar_score = analysis.grammar_score
+            row.sentences_analyzed = analysis.sentences_analyzed
+            row.words_analyzed = analysis.words_analyzed
+            row.grammar_issues = [
+                GrammarIssueRow(
+                    id=issue.id,
+                    turn_id=issue.turn_id,
+                    original=issue.original,
+                    corrected=issue.corrected,
+                    explanation=issue.explanation,
+                    category=issue.category.value,
+                    confidence=issue.confidence,
+                )
+                for issue in analysis.issues
+            ]
+
         try:
-            async with self._session_factory() as db:
-                row = await self._row_for(db, analysis.session_id)
-                row.grammar_provider = analysis.provider
-                row.grammar_created_at = analysis.created_at
-                row.grammar_score = analysis.grammar_score
-                row.sentences_analyzed = analysis.sentences_analyzed
-                row.words_analyzed = analysis.words_analyzed
-                row.grammar_issues = [
-                    GrammarIssueRow(
-                        id=issue.id,
-                        turn_id=issue.turn_id,
-                        original=issue.original,
-                        corrected=issue.corrected,
-                        explanation=issue.explanation,
-                        category=issue.category.value,
-                        confidence=issue.confidence,
-                    )
-                    for issue in analysis.issues
-                ]
-                await db.commit()
+            await self._save(analysis.session_id, apply)
         except SQLAlchemyError as exc:
             logger.exception("Failed to save grammar for %s", analysis.session_id)
             raise StorageError("The analysis could not be saved.") from exc
@@ -111,29 +136,29 @@ class SqlAnalysisRepository:
     async def save_vocabulary(
         self, analysis: VocabularyAnalysis
     ) -> VocabularyAnalysis:
+        def apply(row: SpeechAnalysisRow) -> None:
+            row.vocabulary_provider = analysis.provider
+            row.vocabulary_created_at = analysis.created_at
+            row.vocabulary_score = analysis.vocabulary_score
+            row.vocabulary_words = analysis.words_analyzed
+            row.unique_words = analysis.unique_words
+            row.lexical_diversity = analysis.lexical_diversity
+            row.vocabulary_issues = [
+                VocabularyIssueRow(
+                    id=issue.id,
+                    type=issue.type.value,
+                    text=issue.text,
+                    occurrences=issue.occurrences,
+                    example=issue.example,
+                    suggestions=json.dumps(issue.suggestions),
+                    explanation=issue.explanation,
+                    confidence=issue.confidence,
+                )
+                for issue in analysis.issues
+            ]
+
         try:
-            async with self._session_factory() as db:
-                row = await self._row_for(db, analysis.session_id)
-                row.vocabulary_provider = analysis.provider
-                row.vocabulary_created_at = analysis.created_at
-                row.vocabulary_score = analysis.vocabulary_score
-                row.vocabulary_words = analysis.words_analyzed
-                row.unique_words = analysis.unique_words
-                row.lexical_diversity = analysis.lexical_diversity
-                row.vocabulary_issues = [
-                    VocabularyIssueRow(
-                        id=issue.id,
-                        type=issue.type.value,
-                        text=issue.text,
-                        occurrences=issue.occurrences,
-                        example=issue.example,
-                        suggestions=json.dumps(issue.suggestions),
-                        explanation=issue.explanation,
-                        confidence=issue.confidence,
-                    )
-                    for issue in analysis.issues
-                ]
-                await db.commit()
+            await self._save(analysis.session_id, apply)
         except SQLAlchemyError as exc:
             logger.exception("Failed to save vocabulary for %s", analysis.session_id)
             raise StorageError("The analysis could not be saved.") from exc
@@ -167,33 +192,33 @@ class SqlAnalysisRepository:
         )
 
     async def save_fluency(self, analysis: FluencyAnalysis) -> FluencyAnalysis:
+        def apply(row: SpeechAnalysisRow) -> None:
+            row.fluency_created_at = analysis.created_at
+            row.fluency_score = analysis.fluency_score
+            row.fluency_note = analysis.note
+            row.timed_words = analysis.timed_words
+            row.analyzed_seconds = analysis.analyzed_seconds
+            row.speaking_rate_wpm = analysis.speaking_rate_wpm
+            row.articulation_rate_wpm = analysis.articulation_rate_wpm
+            row.pause_count = analysis.pause_count
+            row.long_pause_count = analysis.long_pause_count
+            row.total_pause_seconds = analysis.total_pause_seconds
+            row.filler_count = analysis.filler_count
+            row.repetition_count = analysis.repetition_count
+            row.restart_count = analysis.restart_count
+            row.fluency_findings = [
+                FluencyFindingRow(
+                    id=f.id,
+                    type=f.type.value,
+                    text=f.text,
+                    occurrences=f.occurrences,
+                    detail=f.detail,
+                )
+                for f in analysis.findings
+            ]
+
         try:
-            async with self._session_factory() as db:
-                row = await self._row_for(db, analysis.session_id)
-                row.fluency_created_at = analysis.created_at
-                row.fluency_score = analysis.fluency_score
-                row.fluency_note = analysis.note
-                row.timed_words = analysis.timed_words
-                row.analyzed_seconds = analysis.analyzed_seconds
-                row.speaking_rate_wpm = analysis.speaking_rate_wpm
-                row.articulation_rate_wpm = analysis.articulation_rate_wpm
-                row.pause_count = analysis.pause_count
-                row.long_pause_count = analysis.long_pause_count
-                row.total_pause_seconds = analysis.total_pause_seconds
-                row.filler_count = analysis.filler_count
-                row.repetition_count = analysis.repetition_count
-                row.restart_count = analysis.restart_count
-                row.fluency_findings = [
-                    FluencyFindingRow(
-                        id=f.id,
-                        type=f.type.value,
-                        text=f.text,
-                        occurrences=f.occurrences,
-                        detail=f.detail,
-                    )
-                    for f in analysis.findings
-                ]
-                await db.commit()
+            await self._save(analysis.session_id, apply)
         except SQLAlchemyError as exc:
             logger.exception("Failed to save fluency for %s", analysis.session_id)
             raise StorageError("The analysis could not be saved.") from exc
@@ -233,30 +258,30 @@ class SqlAnalysisRepository:
     async def save_pronunciation(
         self, analysis: PronunciationAnalysis
     ) -> PronunciationAnalysis:
+        def apply(row: SpeechAnalysisRow) -> None:
+            row.pronunciation_provider = analysis.provider
+            row.pronunciation_created_at = analysis.created_at
+            row.pronunciation_score = analysis.pronunciation_score
+            row.pronunciation_note = analysis.note
+            row.pronunciation_seconds = analysis.analyzed_seconds
+            row.pronunciation_words = analysis.words_analyzed
+            row.substitutions_found = analysis.substitutions_found
+            row.pronunciation_issues = [
+                PronunciationIssueRow(
+                    id=i.id,
+                    expected_phoneme=i.expected_phoneme,
+                    detected_phoneme=i.detected_phoneme,
+                    occurrences=i.occurrences,
+                    confidence=i.confidence,
+                    affected_words=json.dumps(i.affected_words),
+                    practice_words=json.dumps(i.practice_words),
+                    explanation=i.explanation,
+                )
+                for i in analysis.issues
+            ]
+
         try:
-            async with self._session_factory() as db:
-                row = await self._row_for(db, analysis.session_id)
-                row.pronunciation_provider = analysis.provider
-                row.pronunciation_created_at = analysis.created_at
-                row.pronunciation_score = analysis.pronunciation_score
-                row.pronunciation_note = analysis.note
-                row.pronunciation_seconds = analysis.analyzed_seconds
-                row.pronunciation_words = analysis.words_analyzed
-                row.substitutions_found = analysis.substitutions_found
-                row.pronunciation_issues = [
-                    PronunciationIssueRow(
-                        id=i.id,
-                        expected_phoneme=i.expected_phoneme,
-                        detected_phoneme=i.detected_phoneme,
-                        occurrences=i.occurrences,
-                        confidence=i.confidence,
-                        affected_words=json.dumps(i.affected_words),
-                        practice_words=json.dumps(i.practice_words),
-                        explanation=i.explanation,
-                    )
-                    for i in analysis.issues
-                ]
-                await db.commit()
+            await self._save(analysis.session_id, apply)
         except SQLAlchemyError as exc:
             logger.exception(
                 "Failed to save pronunciation for %s", analysis.session_id
