@@ -181,10 +181,10 @@ function Conversation() {
   const clock = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
-    <main className="relative flex min-h-screen flex-col overflow-hidden">
+    <main className="relative flex h-dvh flex-col overflow-hidden">
       <div className="halo pointer-events-none absolute inset-x-0 -top-52 h-[640px]" />
 
-      <header className="relative mx-auto flex w-full max-w-4xl items-center justify-between px-6 py-6">
+      <header className="relative mx-auto flex w-full max-w-4xl shrink-0 items-center justify-between px-6 py-6">
         <Link to="/" className="flex items-center gap-2">
           <Waves className="size-5 text-accent" />
           <span className="tracking-tight">Lexa</span>
@@ -194,13 +194,18 @@ function Conversation() {
         </span>
       </header>
 
-      <section className="relative mx-auto flex w-full max-w-4xl flex-1 flex-col px-6 pb-56">
-        <div className="flex flex-col items-center py-10">
-          <div className="relative flex size-32 items-center justify-center">
+      {/* Everything below the header fits in exactly what's left of the
+          screen (min-h-0 is what lets a flex child shrink below its content
+          size); only the feed scrolls, so the page itself never does -
+          without this, a tall enough page scrolls as a whole and can carry
+          the header and this section's own top off-screen with it. */}
+      <section className="relative mx-auto flex w-full min-h-0 max-w-4xl flex-1 flex-col px-6">
+        <div className="flex shrink-0 flex-col items-center py-6">
+          <div className="relative flex size-28 items-center justify-center">
             {status === "speaking" && (
               <span className="pulse-ring absolute inset-0 rounded-full border border-accent/50" />
             )}
-            <span className="surface flex size-32 items-center justify-center rounded-full">
+            <span className="surface flex size-28 items-center justify-center rounded-full">
               {status === "thinking" ? (
                 <Loader2 className="size-8 animate-spin text-accent" />
               ) : (
@@ -208,7 +213,7 @@ function Conversation() {
               )}
             </span>
           </div>
-          <p className="mt-5 font-mono text-xs tracking-wide text-muted-foreground uppercase">
+          <p className="mt-4 font-mono text-xs tracking-wide text-muted-foreground uppercase">
             {caption(status)}
           </p>
           {status === "recording" && recorder.voiceActivity.status === "ending" && (
@@ -230,13 +235,13 @@ function Conversation() {
         </div>
 
         {recorder.error && (
-          <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
+          <div className="mb-4 shrink-0 rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
             {recorder.error}
           </div>
         )}
         {error &&
           (error.isRateLimited ? (
-            <div className="mb-4 flex items-start gap-3 rounded-xl border border-border bg-secondary px-5 py-3 text-sm">
+            <div className="mb-4 flex shrink-0 items-start gap-3 rounded-xl border border-border bg-secondary px-5 py-3 text-sm">
               <Clock className="mt-0.5 size-4 shrink-0 text-accent" />
               <span>
                 {error.message}
@@ -249,12 +254,12 @@ function Conversation() {
               </span>
             </div>
           ) : (
-            <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
+            <div className="mb-4 shrink-0 rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3 text-sm text-destructive">
               {error.message}
             </div>
           ))}
 
-        <div ref={feedRef} className="max-h-[38vh] space-y-4 overflow-y-auto pr-1">
+        <div ref={feedRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-4">
           {turns.length === 0 && status !== "starting" && (
             <p className="py-8 text-center text-sm text-muted-foreground">
               Tap the microphone and say something to begin.
@@ -282,8 +287,8 @@ function Conversation() {
         </div>
       </section>
 
-      <div className="fixed inset-x-0 bottom-0">
-        <div className="mx-auto flex w-full max-w-4xl flex-col items-center gap-3 px-6 pb-8">
+      <div className="relative shrink-0">
+        <div className="mx-auto flex w-full max-w-4xl flex-col items-center gap-3 px-6 pb-6">
           <div className="surface flex w-full max-w-xl items-center gap-2 rounded-2xl px-2 py-2">
             <input
               value={draft}
