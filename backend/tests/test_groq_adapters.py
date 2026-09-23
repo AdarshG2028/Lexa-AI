@@ -4,6 +4,8 @@ What matters here is the boundary contract: provider JSON becomes application
 models, and provider failures become application errors.
 """
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -12,6 +14,7 @@ from app.config import Settings
 from app.core.errors import (
     ConfigError,
     ProviderBadResponseError,
+    ProviderRateLimitedError,
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
@@ -93,6 +96,43 @@ async def test_llm_maps_response_to_chat_reply(client, groq_settings):
 
 
 @respx.mock
+async def test_the_default_reasoning_model_gets_reasoning_effort_low(client, groq_settings):
+    """gpt-oss spends part of max_tokens on hidden "thinking" before any
+    visible reply; without this, a request that invites more thought (e.g.
+    "give me a recipe") can exhaust the whole budget on reasoning and return
+    no visible text at all - which is exactly what an empty reply looks like
+    from the caller's side."""
+    route = respx.post(f"{BASE_URL}/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "Sounds fun!"}}]}
+        )
+    )
+    provider = GroqLLMProvider(client, groq_settings)
+    await provider.reply([ChatMessage(role="user", content="Hi")])
+
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["reasoning_effort"] == "low"
+    assert sent["max_tokens"] == groq_settings.groq_llm_max_tokens
+
+
+@respx.mock
+async def test_a_non_reasoning_model_is_not_sent_reasoning_effort(client, groq_settings):
+    """Groq returns 400 for reasoning_effort on a model that does not support
+    it, so switching GROQ_LLM_MODEL away from gpt-oss must not send it."""
+    other = groq_settings.model_copy(update={"groq_llm_model": "llama-3.3-70b-versatile"})
+    route = respx.post(f"{BASE_URL}/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "Sounds fun!"}}]}
+        )
+    )
+    provider = GroqLLMProvider(client, other)
+    await provider.reply([ChatMessage(role="user", content="Hi")])
+
+    sent = json.loads(route.calls.last.request.content)
+    assert "reasoning_effort" not in sent
+
+
+@respx.mock
 async def test_llm_rejects_an_empty_reply(client, groq_settings):
     respx.post(f"{BASE_URL}/chat/completions").mock(
         return_value=httpx.Response(200, json={"choices": [{"message": {"content": "  "}}]})
@@ -153,14 +193,49 @@ async def test_retired_model_id_becomes_config_error_naming_the_fix(client, groq
 
 
 @respx.mock
-async def test_rate_limit_becomes_provider_unavailable(client, groq_settings):
+async def test_rate_limit_becomes_a_distinct_retryable_error(client, groq_settings):
+    """Distinct from a generic failure, so the frontend can tell a learner to
+    wait and try again rather than reporting the app as broken."""
     respx.post(f"{BASE_URL}/chat/completions").mock(
         return_value=httpx.Response(429, json={"error": {"message": "slow down"}})
     )
     provider = GroqLLMProvider(client, groq_settings)
 
-    with pytest.raises(ProviderUnavailableError):
+    with pytest.raises(ProviderRateLimitedError) as excinfo:
         await provider.reply([ChatMessage(role="user", content="Hi")])
+    assert excinfo.value.details["retry_after_seconds"] is None
+
+
+@respx.mock
+async def test_rate_limit_carries_the_providers_retry_after_seconds(client, groq_settings):
+    respx.post(f"{BASE_URL}/chat/completions").mock(
+        return_value=httpx.Response(
+            429,
+            json={"error": {"message": "slow down"}},
+            headers={"Retry-After": "12"},
+        )
+    )
+    provider = GroqLLMProvider(client, groq_settings)
+
+    with pytest.raises(ProviderRateLimitedError) as excinfo:
+        await provider.reply([ChatMessage(role="user", content="Hi")])
+    assert excinfo.value.details["retry_after_seconds"] == 12
+
+
+@respx.mock
+async def test_a_non_numeric_retry_after_is_treated_as_unknown(client, groq_settings):
+    respx.post(f"{BASE_URL}/chat/completions").mock(
+        return_value=httpx.Response(
+            429,
+            json={"error": {"message": "slow down"}},
+            headers={"Retry-After": "Wed, 23 Sep 2026 06:00:00 GMT"},
+        )
+    )
+    provider = GroqLLMProvider(client, groq_settings)
+
+    with pytest.raises(ProviderRateLimitedError) as excinfo:
+        await provider.reply([ChatMessage(role="user", content="Hi")])
+    assert excinfo.value.details["retry_after_seconds"] is None
 
 
 @respx.mock

@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     groq_tts_model: str = "canopylabs/orpheus-v1-english"
     groq_tts_voice: str = "troy"
     groq_tts_format: str = "wav"
+    # Reasoning models (the gpt-oss family) spend part of this budget on
+    # hidden "thinking" tokens before any visible reply, so it needs more
+    # headroom than a plain chat model - 200 was regularly exhausted by
+    # reasoning alone, leaving nothing for the actual answer.
+    groq_llm_max_tokens: int = 400
 
     deepgram_api_key: str = ""
     deepgram_base_url: str = "https://api.deepgram.com"
