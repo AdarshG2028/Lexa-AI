@@ -11,7 +11,7 @@ import {
   startSession,
   type TurnResult,
 } from "@/lib/api";
-import { useRecorder } from "@/lib/useRecorder";
+import { useRecorder, VAD_REDEMPTION_MS } from "@/lib/useRecorder";
 
 export const Route = createFileRoute("/conversation")({
   head: () => ({
@@ -37,7 +37,6 @@ type Status = "starting" | "idle" | "recording" | "thinking" | "speaking" | "fai
 
 function Conversation() {
   const navigate = useNavigate();
-  const recorder = useRecorder();
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("starting");
@@ -125,6 +124,14 @@ function Conversation() {
     [play],
   );
 
+  // A plain function, not useCallback: useRecorder reads this through a ref
+  // it refreshes every render, so it always sees the current sessionId
+  // without needing to be memoized here.
+  const recorder = useRecorder((captured) => {
+    if (!sessionId) return;
+    void submit(() => sendAudioTurn(sessionId, captured.blob, captured.filename));
+  });
+
   const toggleRecording = useCallback(async () => {
     if (!sessionId) return;
 
@@ -198,6 +205,13 @@ function Conversation() {
           <p className="mt-5 font-mono text-xs tracking-wide text-muted-foreground uppercase">
             {caption(status)}
           </p>
+          {status === "recording" && recorder.voiceActivity.status === "ending" && (
+            <p className="mt-1 font-mono text-[11px] text-accent">
+              Sending in{" "}
+              {Math.max(1, Math.ceil((VAD_REDEMPTION_MS - recorder.voiceActivity.quietMs) / 1000))}s
+              unless you keep talking…
+            </p>
+          )}
           <div className="mt-4 flex h-8 items-end gap-1.5">
             {Array.from({ length: 9 }).map((_, i) => (
               <span
@@ -271,12 +285,15 @@ function Conversation() {
               onClick={() => void toggleRecording()}
               disabled={!sessionId || busy}
               aria-label={recorder.recording ? "Stop recording and send" : "Start recording"}
-              className={`flex size-12 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+              className={`relative flex size-12 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
                 recorder.recording
                   ? "bg-destructive text-destructive-foreground"
                   : "bg-secondary hover:bg-muted"
               }`}
             >
+              {recorder.voiceActivity.status === "ending" && (
+                <span className="pulse-ring absolute inset-0 rounded-full border border-accent/70" />
+              )}
               {recorder.recording ? (
                 <Square className="size-5" />
               ) : (
