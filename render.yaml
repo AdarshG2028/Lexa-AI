@@ -32,8 +32,14 @@ services:
         value: groq
       - key: LLM_PROVIDER
         value: groq
+      # Deepgram is primary: Groq's TTS voice (Orpheus) has a tight free-tier
+      # daily token cap - roughly one paragraph's worth - and re-hits it
+      # within a normal conversation, at which point the voice would swap
+      # mid-conversation as the fallback chain kicked in. Deepgram bills
+      # against a credit balance instead of a nightly reset, so it does not
+      # hit that ceiling under normal use.
       - key: TTS_PROVIDER
-        value: groq
+        value: deepgram
       - key: GRAMMAR_PROVIDER
         value: groq
       - key: VOCABULARY_PROVIDER
@@ -42,11 +48,11 @@ services:
       # have. "off" makes the endpoint refuse rather than invent findings.
       - key: PRONUNCIATION_PROVIDER
         value: "off"
-      # If Groq's voice fails (rate limit, outage) the conversation degrades to
-      # a lesser voice instead of stopping. Deepgram is skipped when its key is
-      # not set.
+      # If Deepgram fails (outage, credit exhausted) the conversation degrades
+      # to Groq's voice, then to a silent-tone placeholder, instead of
+      # stopping outright.
       - key: TTS_FALLBACK_PROVIDERS
-        value: deepgram,mock
+        value: groq,mock
       - key: DEEPGRAM_API_KEY
         sync: false
       - key: SESSION_STORE
