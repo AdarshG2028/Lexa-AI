@@ -178,6 +178,7 @@ function Conversation() {
   }, [navigate, recorder, sessionId]);
 
   const busy = status === "thinking" || status === "speaking";
+  const hasTurns = turns.length > 0;
   const clock = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
@@ -200,37 +201,63 @@ function Conversation() {
           without this, a tall enough page scrolls as a whole and can carry
           the header and this section's own top off-screen with it. */}
       <section className="relative mx-auto flex w-full min-h-0 max-w-4xl flex-1 flex-col px-6">
-        <div className="flex shrink-0 flex-col items-center py-6">
-          <div className="relative flex size-28 items-center justify-center">
+        {/* This block is a big "waiting to listen" hero before anything has
+            been said, where the room is free to give it. Once a real
+            transcript exists the feed needs that room far more, so it
+            collapses to a compact row instead of quietly shrinking the
+            available chat height on any window that isn't tall to begin with -
+            the previous fixed-size version was exactly what let a short
+            browser window clip the first message under this block. */}
+        <div
+          className={`flex shrink-0 items-center justify-center gap-3 ${hasTurns ? "flex-row py-3" : "flex-col py-6"}`}
+        >
+          <div
+            className={`relative flex shrink-0 items-center justify-center ${hasTurns ? "size-11" : "size-28"}`}
+          >
             {status === "speaking" && (
               <span className="pulse-ring absolute inset-0 rounded-full border border-accent/50" />
             )}
-            <span className="surface flex size-28 items-center justify-center rounded-full">
+            <span
+              className={`surface flex items-center justify-center rounded-full ${hasTurns ? "size-11" : "size-28"}`}
+            >
               {status === "thinking" ? (
-                <Loader2 className="size-8 animate-spin text-accent" />
+                <Loader2
+                  className={
+                    hasTurns ? "size-4 animate-spin text-accent" : "size-8 animate-spin text-accent"
+                  }
+                />
               ) : (
-                <Volume2 className="size-8 text-accent" />
+                <Volume2 className={hasTurns ? "size-4 text-accent" : "size-8 text-accent"} />
               )}
             </span>
           </div>
-          <p className="mt-4 font-mono text-xs tracking-wide text-muted-foreground uppercase">
-            {caption(status)}
-          </p>
-          {status === "recording" && recorder.voiceActivity.status === "ending" && (
-            <p className="mt-1 font-mono text-[11px] text-accent">
-              Sending in{" "}
-              {Math.max(1, Math.ceil((VAD_REDEMPTION_MS - recorder.voiceActivity.quietMs) / 1000))}s
-              unless you keep talking…
+          <div className={hasTurns ? "flex flex-col items-start" : "flex flex-col items-center"}>
+            <p
+              className={`font-mono text-xs tracking-wide text-muted-foreground uppercase ${hasTurns ? "" : "mt-4"}`}
+            >
+              {caption(status)}
             </p>
-          )}
-          <div className="mt-4 flex h-8 items-end gap-1.5">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <span
-                key={i}
-                className={`bar-bounce w-1.5 rounded-full ${status === "speaking" ? "bg-accent" : "bg-muted-foreground"} ${status === "recording" || status === "speaking" ? "" : "opacity-25"}`}
-                style={{ height: `${12 + ((i * 7) % 20)}px`, animationDelay: `${i * 0.09}s` }}
-              />
-            ))}
+            {status === "recording" && recorder.voiceActivity.status === "ending" && (
+              <p className="mt-1 font-mono text-[11px] text-accent">
+                Sending in{" "}
+                {Math.max(
+                  1,
+                  Math.ceil((VAD_REDEMPTION_MS - recorder.voiceActivity.quietMs) / 1000),
+                )}
+                s unless you keep talking…
+              </p>
+            )}
+            {!hasTurns && (
+              <div className="mt-4 flex h-8 items-end gap-1.5">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={`bar-bounce w-1.5 rounded-full ${status === "speaking" ? "bg-accent" : "bg-muted-foreground"} ${status === "recording" || status === "speaking" ? "" : "opacity-25"}`}
+                    style={{ height: `${12 + ((i * 7) % 20)}px`, animationDelay: `${i * 0.09}s` }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
