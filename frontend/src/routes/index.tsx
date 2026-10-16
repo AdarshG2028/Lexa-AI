@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Mic, Waves, SpellCheck, AudioLines, ArrowRight, ArrowUpRight } from "lucide-react";
 
+import { SPOKEN_LANGUAGES } from "@/lib/languages";
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -171,6 +173,42 @@ function Landing() {
               </div>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="relative mx-auto w-full max-w-6xl px-6 pb-28">
+        <div className="surface rounded-2xl p-8 sm:p-10">
+          <div className="grid gap-8 lg:grid-cols-[1fr_1.1fr] lg:items-center">
+            <div>
+              <span className="font-mono text-[11px] tracking-wide text-muted-foreground uppercase">
+                Not comfortable in English yet?
+              </span>
+              <h2 className="mt-3 text-3xl sm:text-4xl">Start in your own language</h2>
+              <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
+                Talk the way you normally would. Lexa answers in simple English, and when you finish
+                you get the English for the phrases and harder words you reached for.
+              </p>
+            </div>
+            <ul className="grid grid-cols-2 gap-3">
+              {SPOKEN_LANGUAGES.map((language) => (
+                <li key={language.code}>
+                  <Link
+                    to="/conversation"
+                    search={{ lang: language.code }}
+                    className="group flex h-full flex-col gap-1 rounded-xl border border-border px-5 py-4 transition-colors hover:bg-secondary"
+                  >
+                    <span lang={language.code} className="text-2xl leading-tight">
+                      {language.nativeName}
+                    </span>
+                    <span className="flex items-center justify-between font-mono text-xs tracking-wide text-muted-foreground uppercase">
+                      {language.name}
+                      <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 

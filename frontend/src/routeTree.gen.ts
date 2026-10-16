@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AlternativesRouteImport } from './routes/alternatives'
 import { Route as ConversationRouteImport } from './routes/conversation'
 import { Route as InsightsRouteImport } from './routes/insights'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AlternativesRoute = AlternativesRouteImport.update({
+  id: '/alternatives',
+  path: '/alternatives',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConversationRoute = ConversationRouteImport.update({
@@ -31,30 +37,34 @@ const InsightsRoute = InsightsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/alternatives': typeof AlternativesRoute
   '/conversation': typeof ConversationRoute
   '/insights': typeof InsightsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/alternatives': typeof AlternativesRoute
   '/conversation': typeof ConversationRoute
   '/insights': typeof InsightsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/alternatives': typeof AlternativesRoute
   '/conversation': typeof ConversationRoute
   '/insights': typeof InsightsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/conversation' | '/insights'
+  fullPaths: '/' | '/alternatives' | '/conversation' | '/insights'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/conversation' | '/insights'
-  id: '__root__' | '/' | '/conversation' | '/insights'
+  to: '/' | '/alternatives' | '/conversation' | '/insights'
+  id: '__root__' | '/' | '/alternatives' | '/conversation' | '/insights'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AlternativesRoute: typeof AlternativesRoute
   ConversationRoute: typeof ConversationRoute
   InsightsRoute: typeof InsightsRoute
 }
@@ -66,6 +76,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/alternatives': {
+      id: '/alternatives'
+      path: '/alternatives'
+      fullPath: '/alternatives'
+      preLoaderRoute: typeof AlternativesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/conversation': {
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AlternativesRoute: AlternativesRoute,
   ConversationRoute: ConversationRoute,
   InsightsRoute: InsightsRoute,
 }

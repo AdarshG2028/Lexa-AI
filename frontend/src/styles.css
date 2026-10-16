@@ -221,3 +221,19 @@
     transparent 100%
   );
 }
+
+/* Text in a learner's own language carries a lang attribute, which is what
+   selects a font that actually draws its script well. System fallbacks exist
+   for all four, but vary a lot in quality between platforms. */
+:lang(hi) {
+  font-family: "Noto Sans Devanagari", var(--font-sans);
+}
+:lang(kn) {
+  font-family: "Noto Sans Kannada", var(--font-sans);
+}
+:lang(ta) {
+  font-family: "Noto Sans Tamil", var(--font-sans);
+}
+:lang(te) {
+  font-family: "Noto Sans Telugu", var(--font-sans);
+}

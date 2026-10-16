@@ -5,6 +5,8 @@
  * backend changes a field, this file is the single place to follow it.
  */
 
+import type { SpokenLanguageCode } from "@/lib/languages";
+
 const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] ?? "http://localhost:8001").replace(
   /\/+$/,
   "",
@@ -25,6 +27,8 @@ export type TurnResult = {
 
 export type SessionSummary = {
   id: string;
+  mode: "english_coach" | "language_bridge";
+  spoken_language: SpokenLanguageCode | null;
   status: "active" | "completed" | "expired";
   started_at: string;
   duration_seconds: number;
@@ -124,6 +128,26 @@ export type PronunciationAnalysis = {
   issues: PronunciationIssue[];
 };
 
+export type EnglishAlternative = {
+  id: string;
+  turn_id: string | null;
+  /** What the learner said, exactly as it was transcribed. */
+  original: string;
+  english: string;
+  kind: "word" | "phrase";
+  example: string;
+};
+
+export type EnglishAlternativesAnalysis = {
+  session_id: string;
+  spoken_language: SpokenLanguageCode;
+  provider: string;
+  turns_analyzed: number;
+  note: string;
+  item_count: number;
+  items: EnglishAlternative[];
+};
+
 /** Carries the backend's own error code, so the UI can react to the cause
  *  rather than pattern-matching on a message string. */
 export class ApiError extends Error {
@@ -204,11 +228,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function startSession(): Promise<SessionSummary> {
+/**
+ * With no language this is an ordinary English coaching session, exactly as
+ * before. With one, it is a language-bridge session: the learner speaks that
+ * language and is answered in English.
+ */
+export function startSession(language?: SpokenLanguageCode): Promise<SessionSummary> {
+  const body = language ? { mode: "language_bridge", spoken_language: language } : {};
   return request<SessionSummary>("/api/v1/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify(body),
   });
 }
 
@@ -262,6 +292,8 @@ export const runGrammar = (id: string) => analysis(id, "grammar") as Promise<Gra
 export const runVocabulary = (id: string) =>
   analysis(id, "vocabulary") as Promise<VocabularyAnalysis>;
 export const runFluency = (id: string) => analysis(id, "fluency") as Promise<FluencyAnalysis>;
+export const runEnglishAlternatives = (id: string) =>
+  analysis(id, "english-alternatives") as Promise<EnglishAlternativesAnalysis>;
 export const runPronunciation = (id: string) =>
   analysis(id, "pronunciation") as Promise<PronunciationAnalysis>;
 

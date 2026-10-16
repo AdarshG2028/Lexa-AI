@@ -13,6 +13,7 @@ import {
   type TurnResult,
 } from "@/lib/api";
 import { formatWait } from "@/lib/format";
+import { findSpokenLanguage, type SpokenLanguageCode } from "@/lib/languages";
 import { useRecorder, VAD_REDEMPTION_MS } from "@/lib/useRecorder";
 
 export const Route = createFileRoute("/conversation")({
@@ -31,6 +32,12 @@ export const Route = createFileRoute("/conversation")({
       },
     ],
   }),
+  // `lang` turns this into a language-bridge conversation: the learner speaks
+  // that language and is answered in English. Absent or unrecognised, it is
+  // the ordinary English session it has always been.
+  validateSearch: (search: Record<string, unknown>): { lang?: SpokenLanguageCode | undefined } => ({
+    lang: findSpokenLanguage(search["lang"])?.code,
+  }),
   component: Conversation,
 });
 
@@ -39,6 +46,8 @@ type Status = "starting" | "idle" | "recording" | "thinking" | "speaking" | "fai
 
 function Conversation() {
   const navigate = useNavigate();
+  const { lang } = Route.useSearch();
+  const language = findSpokenLanguage(lang);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("starting");
@@ -53,7 +62,7 @@ function Conversation() {
 
   useEffect(() => {
     let cancelled = false;
-    startSession()
+    startSession(language?.code)
       .then((session) => {
         if (cancelled) return;
         setSessionId(session.id);
@@ -67,7 +76,7 @@ function Conversation() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [language?.code]);
 
   useEffect(() => {
     if (status === "starting" || status === "failed") return;
@@ -174,8 +183,12 @@ function Conversation() {
       // A session that cannot be closed can still be analysed; the report
       // matters more than the status flag.
     }
-    navigate({ to: "/insights", search: { session: sessionId } });
-  }, [navigate, recorder, sessionId]);
+    if (language) {
+      navigate({ to: "/alternatives", search: { session: sessionId, lang: language.code } });
+    } else {
+      navigate({ to: "/insights", search: { session: sessionId } });
+    }
+  }, [language, navigate, recorder, sessionId]);
 
   const busy = status === "thinking" || status === "speaking";
   const hasTurns = turns.length > 0;
@@ -190,9 +203,19 @@ function Conversation() {
           <Waves className="size-5 text-accent" />
           <span className="tracking-tight">Lexa</span>
         </Link>
-        <span className="rounded-full border border-border px-3 py-1 font-mono text-xs tabular-nums text-muted-foreground">
-          {clock}
-        </span>
+        <div className="flex items-center gap-2">
+          {language && (
+            <span
+              lang={language.code}
+              className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
+            >
+              {language.nativeName}
+            </span>
+          )}
+          <span className="rounded-full border border-border px-3 py-1 font-mono text-xs tabular-nums text-muted-foreground">
+            {clock}
+          </span>
+        </div>
       </header>
 
       {/* Everything below the header fits in exactly what's left of the
@@ -235,7 +258,7 @@ function Conversation() {
             <p
               className={`font-mono text-xs tracking-wide text-muted-foreground uppercase ${hasTurns ? "" : "mt-4"}`}
             >
-              {caption(status)}
+              {caption(status, language?.name)}
             </p>
             {status === "recording" && recorder.voiceActivity.status === "ending" && (
               <p className="mt-1 font-mono text-[11px] text-accent">
@@ -289,7 +312,9 @@ function Conversation() {
         <div ref={feedRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-4">
           {turns.length === 0 && status !== "starting" && (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              Tap the microphone and say something to begin.
+              {language
+                ? `Tap the microphone and say something in ${language.name} to begin.`
+                : "Tap the microphone and say something to begin."}
             </p>
           )}
           {turns.map((turn) => (
@@ -307,7 +332,7 @@ function Conversation() {
                 <span className="mb-1 block font-mono text-[11px] tracking-wide uppercase opacity-60">
                   {turn.speaker === "you" ? "You" : "Lexa"}
                 </span>
-                {turn.text}
+                <span lang={turn.speaker === "you" ? language?.code : undefined}>{turn.text}</span>
               </div>
             </div>
           ))}
@@ -371,7 +396,7 @@ function Conversation() {
   );
 }
 
-function caption(status: Status): string {
+function caption(status: Status, languageName?: string): string {
   switch (status) {
     case "starting":
       return "Starting your session…";
@@ -384,6 +409,8 @@ function caption(status: Status): string {
     case "failed":
       return "Could not start a session.";
     default:
-      return "Tap the microphone to speak.";
+      return languageName
+        ? `Tap the microphone and speak in ${languageName}.`
+        : "Tap the microphone to speak.";
   }
 }
