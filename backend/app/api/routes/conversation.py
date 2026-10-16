@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import ConversationServiceDep
 from app.conversation.transcript import Transcript
-from app.models import Session, Speaker, TurnResult
+from app.models import Session, SessionMode, Speaker, TurnResult
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["conversation"])
 
@@ -18,6 +18,10 @@ MEDIA_TYPES = {
 
 class StartSessionRequest(BaseModel):
     user_id: str | None = None
+    # Omitted means an ordinary English coaching session, exactly as before.
+    mode: SessionMode = SessionMode.ENGLISH_COACH
+    # Required for a language_bridge session, ignored otherwise.
+    spoken_language: str | None = None
 
 
 class TextTurnRequest(BaseModel):
@@ -28,7 +32,13 @@ class TextTurnRequest(BaseModel):
 async def start_session(
     service: ConversationServiceDep, body: StartSessionRequest | None = None
 ) -> Session:
-    return await service.start_session(user_id=body.user_id if body else None)
+    if body is None:
+        return await service.start_session()
+    return await service.start_session(
+        user_id=body.user_id,
+        mode=body.mode,
+        spoken_language=body.spoken_language,
+    )
 
 
 @router.get("/{session_id}", response_model=Session)

@@ -39,6 +39,10 @@ class SessionRow(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Nullable on purpose: sessions created before language bridging existed
+    # have neither, and NULL reads back as an ordinary English coaching session.
+    mode: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    spoken_language: Mapped[str | None] = mapped_column(String(8), nullable=True)
     started_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
     last_activity_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
@@ -252,3 +256,45 @@ class PronunciationIssueRow(Base):
     analysis: Mapped[SpeechAnalysisRow] = relationship(
         back_populates="pronunciation_issues"
     )
+
+
+class EnglishAlternativesRow(Base):
+    """The language-bridge report for a session. Kept apart from
+    `speech_analyses`: nothing in it is shared with the English-speech
+    analyses, and a conversation only ever has one kind or the other."""
+
+    __tablename__ = "english_alternatives"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("sessions.id", ondelete="CASCADE"), index=True, unique=True
+    )
+    spoken_language: Mapped[str] = mapped_column(String(8), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+    turns_analyzed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    items: Mapped[list["EnglishAlternativeRow"]] = relationship(
+        back_populates="analysis",
+        cascade="all, delete-orphan",
+        order_by="EnglishAlternativeRow.position",
+        lazy="selectin",
+    )
+
+
+class EnglishAlternativeRow(Base):
+    __tablename__ = "english_alternative_items"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    analysis_id: Mapped[str] = mapped_column(
+        ForeignKey("english_alternatives.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    turn_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    original: Mapped[str] = mapped_column(Text, nullable=False)
+    english: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    example: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    analysis: Mapped[EnglishAlternativesRow] = relationship(back_populates="items")

@@ -19,6 +19,7 @@ async def health(settings: SettingsDep) -> dict:
             "grammar": settings.grammar_provider,
             "vocabulary": settings.vocabulary_provider,
             "pronunciation": settings.pronunciation_provider,
+            "alternatives": settings.alternatives_provider,
         },
     }
 
@@ -35,6 +36,7 @@ async def provider_health(registry: RegistryDep, settings: SettingsDep) -> dict:
         "grammar": registry.grammar,
         "vocabulary": registry.vocabulary,
         "pronunciation": registry.pronunciation,
+        "alternatives": registry.alternatives,
     }
 
     results: dict = {}

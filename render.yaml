@@ -44,6 +44,10 @@ services:
         value: groq
       - key: VOCABULARY_PROVIDER
         value: groq
+      # English alternatives for conversations held in Hindi, Kannada, Tamil
+      # or Telugu.
+      - key: ALTERNATIVES_PROVIDER
+        value: groq
       # The phoneme model needs ~1.6 GB of RAM, which this instance does not
       # have. "off" makes the endpoint refuse rather than invent findings.
       - key: PRONUNCIATION_PROVIDER

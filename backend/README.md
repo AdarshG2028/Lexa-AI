@@ -401,6 +401,45 @@ is not a substitute for the model.
 
 Set `HF_HOME=./data/models` to keep ~1.9 GB of weights off the system drive.
 
+### Language bridge
+
+A separate feature from everything above. The learner speaks their own
+language - Hindi, Kannada, Tamil or Telugu - is answered in simple English, and
+at the end is shown the English for the phrases and harder words they reached
+for. English coaching stays the core product; this sits beside it.
+
+```
+POST /api/v1/sessions   {"mode": "language_bridge", "spoken_language": "ta"}
+POST /api/v1/sessions/{id}/analysis/english-alternatives
+GET  /api/v1/sessions/{id}/analysis/english-alternatives
+```
+
+How it differs from an English session, and why:
+
+- **The language is pinned, never detected.** Auto-detection called Kannada
+  "Tamil" and Telugu "Hindi" in testing; the learner has told us what they
+  speak, so recognition is told too. Conversations in another language use
+  `GROQ_STT_BRIDGE_MODEL` (`whisper-large-v3`), which matched turbo on Hindi
+  and was clearly better on Tamil and Telugu for about 0.3 s more per turn.
+- **The English analyses refuse these conversations**, and this one refuses
+  English ones, with `ANALYSIS_NOT_APPLICABLE`. Scoring a Hindi transcript as if
+  it were English would store a number that means nothing.
+- **Nothing is reported that was not said.** Each item's `original` must match
+  words actually transcribed (tolerating the spelling noise recognition adds to
+  these languages) and is replaced by the transcribed text, so what the learner
+  sees is what was heard - never the model's tidied or invented version.
+  Spans longer than a phrase, English that is still in the learner's script, and
+  duplicates are dropped.
+- **Easy words are left out on purpose.** "Relatively harder words" is a
+  judgement, so the prompt states the test (would someone with a basic English
+  vocabulary already know it?) rather than leaving it to the model's taste.
+- **It is not scored.** Whether something was said well is not the question.
+
+Measured accuracy of recognition, with clean synthesised speech (so an upper
+bound; real microphones will be worse): Hindi near-perfect, Tamil close behind,
+Kannada understandable with spelling noise, Telugu the weakest. A mis-heard
+word can become the wrong English, which is why the report carries a caveat.
+
 ### Project layout
 
 ```
@@ -538,7 +577,8 @@ Codes: `INVALID_AUDIO`, `UNSUPPORTED_AUDIO_FORMAT`, `AUDIO_TOO_LARGE`,
 `SESSION_NOT_FOUND`, `SESSION_NOT_ACTIVE`, `SESSION_EXPIRED`,
 `TURN_NOT_FOUND`, `PROVIDER_UNAVAILABLE`,
 `PROVIDER_TIMEOUT`, `PROVIDER_BAD_RESPONSE`, `CONFIG_ERROR`, `STORAGE_ERROR`,
-`ANALYSIS_NOT_FOUND`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+`ANALYSIS_NOT_FOUND`, `ANALYSIS_NOT_APPLICABLE`, `UNSUPPORTED_LANGUAGE`,
+`VALIDATION_ERROR`, `INTERNAL_ERROR`.
 
 | Method | Path | Purpose |
 |---|---|---|

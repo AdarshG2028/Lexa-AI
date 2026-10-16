@@ -77,6 +77,21 @@ class AnalysisNotFoundError(AppError):
     message = "This conversation has not been analysed yet."
 
 
+class UnsupportedLanguageError(AppError):
+    code = "UNSUPPORTED_LANGUAGE"
+    status_code = 400
+    message = "That language is not supported."
+
+
+class AnalysisNotApplicableError(AppError):
+    """The analysis exists, but not for this kind of conversation - running
+    English grammar over a Hindi transcript would store nonsense."""
+
+    code = "ANALYSIS_NOT_APPLICABLE"
+    status_code = 409
+    message = "This analysis does not apply to this conversation."
+
+
 class RateLimitedError(AppError):
     code = "RATE_LIMITED"
     status_code = 429

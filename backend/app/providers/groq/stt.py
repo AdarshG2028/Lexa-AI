@@ -11,22 +11,33 @@ class GroqSpeechToTextProvider:
         self._client = client
         self._model = settings.groq_stt_model
         self._language = settings.groq_stt_language
+        self._bridge_model = settings.groq_stt_bridge_model
 
     async def transcribe(
-        self, audio: bytes, filename: str, mime_type: str
+        self,
+        audio: bytes,
+        filename: str,
+        mime_type: str,
+        language: str | None = None,
     ) -> Transcription:
+        # A caller naming a language other than the configured default is a
+        # learner speaking their own language, which gets the model measured
+        # to cope with it. Everything else keeps the English-tuned path.
+        bridged = bool(language) and language != self._language
         data = {
-            "model": self._model,
+            "model": self._bridge_model if bridged else self._model,
             "response_format": "verbose_json",
             # Word timings are what the fluency analysis is built on, and
             # they cost nothing extra here.
             "timestamp_granularities[]": "word",
         }
-        if self._language:
-            # Skips Whisper's own language auto-detection, which is the part
-            # that occasionally mis-guesses and transcribes English audio as
-            # another language's phonetics instead of English words.
-            data["language"] = self._language
+        pinned = language or self._language
+        if pinned:
+            # Skips Whisper's own language auto-detection, which mis-guesses:
+            # it has called Kannada Tamil and Telugu Hindi, and transcribed
+            # English as another language's phonetics. The learner told us
+            # which language they speak, so there is nothing to guess.
+            data["language"] = pinned
 
         response = await self._client.post(
             "/audio/transcriptions",
@@ -48,14 +59,16 @@ class GroqSpeechToTextProvider:
 
     async def check(self) -> ProviderCheck:
         listed = await self._client.list_model_ids()
-        found = self._model in listed
+        missing = [m for m in (self._model, self._bridge_model) if m not in listed]
         return ProviderCheck(
             provider=self.name,
             model=self._model,
-            model_listed=found,
-            note=None if found else (
-                "This model ID was not in the provider's model list. It may "
-                "have been retired or may not be enabled for this API key."
+            model_listed=not missing,
+            note=None if not missing else (
+                f"{', '.join(missing)} was not in the provider's model list. "
+                "It may have been retired or may not be enabled for this API "
+                "key. The bridge model serves conversations held in another "
+                "language."
             ),
         )
 

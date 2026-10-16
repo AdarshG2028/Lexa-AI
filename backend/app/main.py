@@ -6,12 +6,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import analysis, conversation, health
+from app.api.routes import alternatives, analysis, conversation, health
 from app.audio.processing import ffmpeg_available
 from app.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
 from app.core.ratelimit import RateLimitMiddleware
+from app.analysis.alternatives_repository import (
+    InMemoryEnglishAlternativesRepository,
+    SqlEnglishAlternativesRepository,
+)
 from app.analysis.memory import InMemoryAnalysisRepository
 from app.analysis.sql import SqlAnalysisRepository
 from app.db.engine import (
@@ -56,10 +60,12 @@ async def lifespan(app: FastAPI):
         factory = create_session_factory(app.state.engine)
         app.state.session_repository = SqlSessionRepository(factory)
         app.state.analysis_repository = SqlAnalysisRepository(factory)
+        app.state.alternatives_repository = SqlEnglishAlternativesRepository(factory)
         logger.info("Sessions persisted to %s", describe_database(settings.database_url))
     else:
         app.state.session_repository = InMemorySessionRepository()
         app.state.analysis_repository = InMemoryAnalysisRepository()
+        app.state.alternatives_repository = InMemoryEnglishAlternativesRepository()
         logger.warning("Sessions are in memory only and are lost on restart.")
 
     try:
@@ -99,6 +105,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(conversation.router)
     app.include_router(analysis.router)
+    app.include_router(alternatives.router)
 
     @app.exception_handler(AppError)
     async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:

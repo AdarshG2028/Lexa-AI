@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from app.audio.processing import normalize_to_wav, validate_upload
 from app.config import Settings
 from app.conversation.history import build_messages
-from app.conversation.prompts import SYSTEM_PROMPT
+from app.conversation.prompts import system_prompt_for
 from app.conversation.transcript import Transcript, build_transcript
 from app.core.errors import (
     InvalidAudioError,
@@ -14,10 +14,13 @@ from app.core.errors import (
     SessionNotActiveError,
     SessionNotFoundError,
     TurnNotFoundError,
+    UnsupportedLanguageError,
 )
+from app.languages import SUPPORTED_LANGUAGES, get_language
 from app.models import (
     AudioRef,
     Session,
+    SessionMode,
     SessionStatus,
     Speaker,
     Turn,
@@ -53,8 +56,30 @@ class ConversationService:
         self._storage = storage
         self._settings = settings
 
-    async def start_session(self, user_id: str | None = None) -> Session:
-        return await self._sessions.create(Session(user_id=user_id))
+    async def start_session(
+        self,
+        user_id: str | None = None,
+        mode: SessionMode = SessionMode.ENGLISH_COACH,
+        spoken_language: str | None = None,
+    ) -> Session:
+        if mode is SessionMode.LANGUAGE_BRIDGE:
+            language = get_language(spoken_language)
+            if language is None:
+                raise UnsupportedLanguageError(
+                    f"{spoken_language!r} is not a supported language."
+                    if spoken_language
+                    else "Choose the language you will speak.",
+                    supported=[lang.code for lang in SUPPORTED_LANGUAGES],
+                )
+            spoken_language = language.code
+        else:
+            # A language only means something to a bridge session; keeping it
+            # off an English session means nothing downstream has to wonder.
+            spoken_language = None
+
+        return await self._sessions.create(
+            Session(user_id=user_id, mode=mode, spoken_language=spoken_language)
+        )
 
     async def get_session(self, session_id: str) -> Session:
         """Reads a session in any state. Retrieval of a finished or expired
@@ -110,7 +135,10 @@ class ConversationService:
 
         started = time.perf_counter()
         transcription = await self._stt.transcribe(
-            wav_bytes, f"{turn.id}.wav", "audio/wav"
+            wav_bytes,
+            f"{turn.id}.wav",
+            "audio/wav",
+            language=session.spoken_language,
         )
         stt_ms = _elapsed_ms(started)
 
@@ -142,7 +170,7 @@ class ConversationService:
         messages = build_messages(
             session,
             turn.transcript,
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=system_prompt_for(session.mode, session.spoken_language),
             max_turns=self._settings.conversation_history_turns,
             max_chars=self._settings.conversation_history_max_chars,
         )

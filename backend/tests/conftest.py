@@ -5,8 +5,10 @@ import wave
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.analysis.alternatives_repository import InMemoryEnglishAlternativesRepository
 from app.analysis.memory import InMemoryAnalysisRepository
 from app.api.deps import (
+    get_alternatives_repository,
     get_analysis_repository,
     get_audio_storage,
     get_registry,
@@ -66,6 +68,8 @@ def app(settings):
     application.dependency_overrides[get_session_repository] = lambda: repository
     application.dependency_overrides[get_audio_storage] = lambda: storage
     application.dependency_overrides[get_analysis_repository] = lambda: analyses
+    alternatives = InMemoryEnglishAlternativesRepository()
+    application.dependency_overrides[get_alternatives_repository] = lambda: alternatives
     return application
 
 

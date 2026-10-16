@@ -18,6 +18,21 @@ class Speaker(str, Enum):
     ASSISTANT = "assistant"
 
 
+class SessionMode(str, Enum):
+    """What a conversation is for.
+
+    ENGLISH_COACH is the product's core: the learner speaks English and is
+    coached on how they said it. LANGUAGE_BRIDGE is a separate feature: the
+    learner speaks their own language, is answered in English, and is shown
+    English alternatives for what they said. The two share the conversation
+    machinery but nothing else - none of the English-speech analyses mean
+    anything for a conversation held in another language.
+    """
+
+    ENGLISH_COACH = "english_coach"
+    LANGUAGE_BRIDGE = "language_bridge"
+
+
 class SessionStatus(str, Enum):
     ACTIVE = "active"
     COMPLETED = "completed"
@@ -61,6 +76,9 @@ class Session(BaseModel):
     id: str = Field(default_factory=_new_id)
     user_id: str | None = None
     status: SessionStatus = SessionStatus.ACTIVE
+    mode: SessionMode = SessionMode.ENGLISH_COACH
+    # The language the learner speaks, for LANGUAGE_BRIDGE sessions only.
+    spoken_language: str | None = None
     started_at: datetime = Field(default_factory=_now)
     last_activity_at: datetime = Field(default_factory=_now)
     ended_at: datetime | None = None
@@ -302,6 +320,46 @@ class PronunciationAnalysis(BaseModel):
     @property
     def issue_count(self) -> int:
         return len(self.issues)
+
+
+class AlternativeKind(str, Enum):
+    WORD = "word"
+    PHRASE = "phrase"
+
+
+class EnglishAlternative(BaseModel):
+    """One thing the learner said in their own language, and how to say it in
+    English. `original` is always a span of what was actually transcribed."""
+
+    id: str = Field(default_factory=_new_id)
+    turn_id: str | None = None
+    original: str
+    english: str
+    kind: AlternativeKind
+    # A short, simple English sentence using the alternative.
+    example: str = ""
+
+
+class EnglishAlternativesAnalysis(BaseModel):
+    """The language-bridge report: English for the phrases and harder words a
+    learner reached for in their own language.
+
+    Deliberately unscored. Whether someone said something well is not the
+    question here; what they could say next time is.
+    """
+
+    session_id: str
+    spoken_language: str
+    provider: str
+    created_at: datetime = Field(default_factory=_now)
+    turns_analyzed: int = 0
+    note: str = ""
+    items: list[EnglishAlternative] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def item_count(self) -> int:
+        return len(self.items)
 
 
 class ProviderCheck(BaseModel):

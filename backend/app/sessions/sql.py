@@ -10,6 +10,7 @@ from app.db.models import SessionRow, TurnRow
 from app.models import (
     AudioRef,
     Session,
+    SessionMode,
     SessionStatus,
     Speaker,
     Turn,
@@ -68,6 +69,8 @@ class SqlSessionRepository:
                     return session
 
                 row.status = session.status.value
+                row.mode = session.mode.value
+                row.spoken_language = session.spoken_language
                 row.user_id = session.user_id
                 row.started_at = session.started_at
                 row.last_activity_at = session.last_activity_at
@@ -90,6 +93,8 @@ def _to_row(session: Session) -> SessionRow:
         id=session.id,
         user_id=session.user_id,
         status=session.status.value,
+        mode=session.mode.value,
+        spoken_language=session.spoken_language,
         started_at=session.started_at,
         last_activity_at=session.last_activity_at,
         ended_at=session.ended_at,
@@ -125,6 +130,8 @@ def _to_domain(row: SessionRow) -> Session:
         id=row.id,
         user_id=row.user_id,
         status=SessionStatus(row.status),
+        mode=SessionMode(row.mode) if row.mode else SessionMode.ENGLISH_COACH,
+        spoken_language=row.spoken_language,
         started_at=row.started_at,
         last_activity_at=row.last_activity_at,
         ended_at=row.ended_at,

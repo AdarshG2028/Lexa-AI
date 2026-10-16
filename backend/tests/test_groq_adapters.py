@@ -309,7 +309,14 @@ def test_registry_selects_implementations_from_config(groq_settings):
 async def test_check_confirms_a_configured_model_exists(client, groq_settings):
     respx.get(f"{BASE_URL}/models").mock(
         return_value=httpx.Response(
-            200, json={"data": [{"id": "whisper-large-v3-turbo"}, {"id": "other"}]}
+            200,
+            json={
+                "data": [
+                    {"id": "whisper-large-v3-turbo"},
+                    {"id": "whisper-large-v3"},
+                    {"id": "other"},
+                ]
+            },
         )
     )
     result = await GroqSpeechToTextProvider(client, groq_settings).check()
@@ -317,6 +324,24 @@ async def test_check_confirms_a_configured_model_exists(client, groq_settings):
     assert result.model == "whisper-large-v3-turbo"
     assert result.model_listed is True
     assert result.note is None
+
+
+@respx.mock
+async def test_check_flags_a_retired_bridge_model_before_a_learner_hits_it(
+    client, groq_settings
+):
+    """The model for conversations held in another language is only used
+    once someone starts one, so a retired ID would otherwise first show up as
+    a failure in the middle of a learner's conversation."""
+    respx.get(f"{BASE_URL}/models").mock(
+        return_value=httpx.Response(
+            200, json={"data": [{"id": "whisper-large-v3-turbo"}]}
+        )
+    )
+    result = await GroqSpeechToTextProvider(client, groq_settings).check()
+
+    assert result.model_listed is False
+    assert "whisper-large-v3" in result.note
 
 
 @respx.mock

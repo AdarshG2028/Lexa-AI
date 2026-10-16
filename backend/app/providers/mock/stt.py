@@ -6,6 +6,16 @@ from app.models import ProviderCheck, Transcription, WordTiming
 
 MOCK_TRANSCRIPT = "I go to college yesterday and it was very good."
 
+# One short, natural utterance per supported language, so a conversation in
+# any of them can be exercised end to end with no key and no microphone. They
+# are matched by the mock alternatives provider.
+MOCK_TRANSCRIPTS = {
+    "hi": "मुझे थोड़ा सा समय चाहिए क्योंकि मैं अपने काम को पूरा करना चाहता हूँ।",
+    "kn": "ನನಗೆ ಸ್ವಲ್ಪ ಸಮಯ ಬೇಕು ಏಕೆಂದರೆ ನಾನು ನನ್ನ ಕೆಲಸವನ್ನು ಮುಗಿಸಬೇಕು.",
+    "ta": "எனக்குக் கொஞ்சம் நேரம் வேண்டும் ஏனென்றால் என் வேலையை முடிக்க வேண்டும்.",
+    "te": "నాకు కొంచెం సమయం కావాలి ఎందుకంటే నేను నా పని పూర్తి చేయాలి.",
+}
+
 
 class MockSpeechToTextProvider:
     """Deterministic offline STT. Does not inspect the audio beyond checking
@@ -14,15 +24,20 @@ class MockSpeechToTextProvider:
     name = "mock"
 
     async def transcribe(
-        self, audio: bytes, filename: str, mime_type: str
+        self,
+        audio: bytes,
+        filename: str,
+        mime_type: str,
+        language: str | None = None,
     ) -> Transcription:
         if not audio:
             raise InvalidAudioError("No audio bytes were provided.")
+        transcript = MOCK_TRANSCRIPTS.get(language or "", MOCK_TRANSCRIPT)
         duration = _wav_seconds(audio)
-        words = _words(MOCK_TRANSCRIPT, duration)
+        words = _words(transcript, duration)
         return Transcription(
-            text=MOCK_TRANSCRIPT,
-            language="en",
+            text=transcript,
+            language=language or "en",
             duration_seconds=duration or (words[-1].end if words else 0.0),
             words=words,
         )

@@ -1,6 +1,7 @@
 from app.config import Settings
 from app.core.errors import ConfigError
 from app.providers.base import (
+    EnglishAlternativesProvider,
     GrammarAnalysisProvider,
     LLMProvider,
     PronunciationAnalysisProvider,
@@ -11,12 +12,14 @@ from app.providers.base import (
 from app.providers.deepgram.client import DeepgramClient
 from app.providers.deepgram.tts import DeepgramTextToSpeechProvider
 from app.providers.fallback import FallbackTextToSpeechProvider
+from app.providers.groq.alternatives import GroqEnglishAlternativesProvider
 from app.providers.groq.client import GroqClient
 from app.providers.groq.grammar import GroqGrammarAnalysisProvider
 from app.providers.groq.llm import GroqLLMProvider
 from app.providers.groq.stt import GroqSpeechToTextProvider
 from app.providers.groq.tts import GroqTextToSpeechProvider
 from app.providers.groq.vocabulary import GroqVocabularyAnalysisProvider
+from app.providers.mock.alternatives import MockEnglishAlternativesProvider
 from app.providers.mock.grammar import MockGrammarAnalysisProvider
 from app.providers.mock.llm import MockLLMProvider
 from app.providers.disabled import DisabledPronunciationProvider
@@ -78,6 +81,14 @@ class ProviderRegistry:
         if name == "mock":
             return MockVocabularyAnalysisProvider()
         raise ConfigError(f"Unknown VOCABULARY_PROVIDER: {name!r}")
+
+    def alternatives(self) -> EnglishAlternativesProvider:
+        name = self._settings.alternatives_provider
+        if name == "groq":
+            return GroqEnglishAlternativesProvider(self._groq(), self._settings)
+        if name == "mock":
+            return MockEnglishAlternativesProvider()
+        raise ConfigError(f"Unknown ALTERNATIVES_PROVIDER: {name!r}")
 
     def pronunciation(self) -> PronunciationAnalysisProvider:
         """The wav2vec2 adapter is imported lazily so that a deployment

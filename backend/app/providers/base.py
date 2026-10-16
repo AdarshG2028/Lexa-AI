@@ -1,8 +1,10 @@
 from typing import Protocol, runtime_checkable
 
+from app.languages import SpokenLanguage
 from app.models import (
     ChatMessage,
     ChatReply,
+    EnglishAlternative,
     GrammarIssue,
     PhonemeSubstitution,
     ProviderCheck,
@@ -20,8 +22,15 @@ class SpeechToTextProvider(Protocol):
     name: str
 
     async def transcribe(
-        self, audio: bytes, filename: str, mime_type: str
-    ) -> Transcription: ...
+        self,
+        audio: bytes,
+        filename: str,
+        mime_type: str,
+        language: str | None = None,
+    ) -> Transcription:
+        """`language` is the code of the language being spoken, when the
+        caller knows it. None means the provider's configured default."""
+        ...
 
     async def check(self) -> ProviderCheck:
         """Raise an AppError if unusable; otherwise describe what is configured."""
@@ -91,5 +100,28 @@ class PronunciationAnalysisProvider(Protocol):
     async def analyze(
         self, samples: list[PronunciationSample]
     ) -> list[PhonemeSubstitution]: ...
+
+    async def check(self) -> ProviderCheck: ...
+
+
+@runtime_checkable
+class EnglishAlternativesProvider(Protocol):
+    """Finds what a learner said in their own language that is worth knowing
+    the English for.
+
+    Unlike the English-speech analyses this is a judgement no arithmetic can
+    make - which words are hard, which phrases do not translate word for
+    word - so it is entirely the provider's call. The service around it is
+    what keeps that call honest.
+    """
+
+    name: str
+
+    async def suggest(
+        self, language: SpokenLanguage, utterances: list[UserUtterance]
+    ) -> list[EnglishAlternative]:
+        """Items arrive without a turn; the service attributes them, because
+        the quoted text must be checked against the transcript regardless."""
+        ...
 
     async def check(self) -> ProviderCheck: ...

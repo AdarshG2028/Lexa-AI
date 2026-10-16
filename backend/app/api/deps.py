@@ -3,6 +3,8 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from app.analysis.alternatives import EnglishAlternativesService
+from app.analysis.alternatives_repository import EnglishAlternativesRepository
 from app.analysis.fluency import FluencyAnalysisService
 from app.analysis.grammar import GrammarAnalysisService
 from app.analysis.pronunciation import PronunciationAnalysisService
@@ -36,6 +38,16 @@ def get_audio_storage() -> AudioStorage:
 
 def get_analysis_repository(request: Request) -> AnalysisRepository:
     return request.app.state.analysis_repository
+
+
+def get_alternatives_repository(request: Request) -> EnglishAlternativesRepository:
+    return request.app.state.alternatives_repository
+
+
+def get_alternatives_service(
+    registry: Annotated[ProviderRegistry, Depends(get_registry)],
+) -> EnglishAlternativesService:
+    return EnglishAlternativesService(registry.alternatives())
 
 
 def get_grammar_service(
@@ -99,4 +111,10 @@ PronunciationServiceDep = Annotated[
 ]
 AnalysisRepositoryDep = Annotated[
     AnalysisRepository, Depends(get_analysis_repository)
+]
+AlternativesServiceDep = Annotated[
+    EnglishAlternativesService, Depends(get_alternatives_service)
+]
+AlternativesRepositoryDep = Annotated[
+    EnglishAlternativesRepository, Depends(get_alternatives_repository)
 ]

@@ -9,6 +9,7 @@ TtsProviderName = Literal["groq", "deepgram", "mock"]
 GrammarProviderName = Literal["groq", "mock"]
 VocabularyProviderName = Literal["groq", "mock"]
 PronunciationProviderName = Literal["wav2vec2", "mock", "off"]
+AlternativesProviderName = Literal["groq", "mock"]
 
 
 class Settings(BaseSettings):
@@ -23,6 +24,8 @@ class Settings(BaseSettings):
     grammar_provider: GrammarProviderName = "mock"
     vocabulary_provider: VocabularyProviderName = "mock"
     pronunciation_provider: PronunciationProviderName = "mock"
+    # English alternatives for what a learner said in their own language.
+    alternatives_provider: AlternativesProviderName = "mock"
 
     # Ordered comma-separated names tried when tts_provider fails, e.g. "groq,mock".
     tts_fallback_providers: str = ""
@@ -36,10 +39,15 @@ class Settings(BaseSettings):
     # reads as nonsense. This app coaches spoken English specifically, so
     # there is never a reason to guess. ISO-639-1; blank restores auto-detect.
     groq_stt_language: str = "en"
+    # Used for the languages a learner can speak instead of English. Measured
+    # on Hindi, Kannada, Tamil and Telugu: the full model matched turbo on
+    # Hindi and was clearly better on Tamil and Telugu, for roughly 0.3s more.
+    groq_stt_bridge_model: str = "whisper-large-v3"
     groq_llm_model: str = "openai/gpt-oss-120b"
     # Falls back to groq_llm_model when blank.
     groq_grammar_model: str = ""
     groq_vocabulary_model: str = ""
+    groq_alternatives_model: str = ""
     groq_tts_model: str = "canopylabs/orpheus-v1-english"
     groq_tts_voice: str = "troy"
     groq_tts_format: str = "wav"
@@ -135,7 +143,7 @@ class Settings(BaseSettings):
     def uses_groq(self) -> bool:
         return "groq" in {
             self.stt_provider, self.llm_provider, self.grammar_provider,
-            self.vocabulary_provider, *self.tts_chain,
+            self.vocabulary_provider, self.alternatives_provider, *self.tts_chain,
         }
 
 

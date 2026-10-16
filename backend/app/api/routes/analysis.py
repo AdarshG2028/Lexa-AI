@@ -8,15 +8,30 @@ from app.api.deps import (
     PronunciationServiceDep,
     VocabularyServiceDep,
 )
-from app.core.errors import AnalysisNotFoundError
+from app.core.errors import AnalysisNotApplicableError, AnalysisNotFoundError
 from app.models import (
     FluencyAnalysis,
     GrammarAnalysis,
     PronunciationAnalysis,
+    Session,
+    SessionMode,
     VocabularyAnalysis,
 )
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["analysis"])
+
+
+def _english_only(session: Session) -> Session:
+    """These analyses assess spoken English. Run over a conversation held in
+    another language they would score the transcript as if it were English
+    and store the result as though it meant something."""
+    if session.mode is SessionMode.LANGUAGE_BRIDGE:
+        raise AnalysisNotApplicableError(
+            "This analysis assesses spoken English, and this conversation "
+            "was held in another language. Use the English alternatives "
+            "analysis instead."
+        )
+    return session
 
 
 @router.post("/{session_id}/analysis/grammar", response_model=GrammarAnalysis)
@@ -32,7 +47,7 @@ async def run_grammar_analysis(
     If analysis grows to include audio models, this is the endpoint that moves
     behind a background job.
     """
-    session = await conversation.get_session(session_id)
+    session = _english_only(await conversation.get_session(session_id))
     analysis = await grammar.analyze(session)
     return await analyses.save_grammar(analysis)
 
@@ -59,7 +74,7 @@ async def run_vocabulary_analysis(
     analyses: AnalysisRepositoryDep,
 ) -> VocabularyAnalysis:
     """Measures word use and asks the provider for better alternatives."""
-    session = await conversation.get_session(session_id)
+    session = _english_only(await conversation.get_session(session_id))
     analysis = await vocabulary.analyze(session)
     return await analyses.save_vocabulary(analysis)
 
@@ -86,7 +101,7 @@ async def run_fluency_analysis(
 ) -> FluencyAnalysis:
     """Measures speaking rate, pauses, fillers and false starts from the
     word timings captured during transcription. No model is called."""
-    session = await conversation.get_session(session_id)
+    session = _english_only(await conversation.get_session(session_id))
     analysis = fluency.analyze(session)
     return await analyses.save_fluency(analysis)
 
@@ -119,7 +134,7 @@ async def run_pronunciation_analysis(
     endpoint - seconds per turn, and slower still on the first call while the
     weights load.
     """
-    session = await conversation.get_session(session_id)
+    session = _english_only(await conversation.get_session(session_id))
     analysis = await pronunciation.analyze(session)
     return await analyses.save_pronunciation(analysis)
 
