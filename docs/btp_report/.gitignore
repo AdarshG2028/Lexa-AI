@@ -1,0 +1,7 @@
+# Local report build dependencies and verification output.
+report_build/node_modules/
+report_build/__pycache__/
+_verify/
+
+# Word owner/lock files.
+~$*.docx
