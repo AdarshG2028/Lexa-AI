@@ -59,6 +59,14 @@ services:
         value: groq,mock
       - key: DEEPGRAM_API_KEY
         sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      # Kannada, Tamil and Telugu go to Sarvam; Hindi and English stay on Groq.
+      # Without the key these languages fall back to Groq rather than failing.
+      - key: SARVAM_STT_LANGUAGES
+        value: kn,ta,te
+      - key: SARVAM_STT_MODEL
+        value: saaras:v4
       - key: SESSION_STORE
         value: database
       # Render's proxy sits in front of the app, so the real client address

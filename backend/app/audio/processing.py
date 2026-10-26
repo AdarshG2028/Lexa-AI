@@ -8,11 +8,21 @@ from app.core.errors import (
     AudioTooLargeError,
     ConfigError,
     InvalidAudioError,
+    InvalidVideoError,
     UnsupportedAudioFormatError,
+    UnsupportedVideoFormatError,
+    VideoTooLargeError,
 )
 
 SUPPORTED_EXTENSIONS = {
     ".flac", ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".ogg", ".wav", ".webm",
+}
+
+# Containers a phone or screen recorder commonly produces. ffmpeg can extract
+# the audio track from every one of them; the browser preview is a bonus, not
+# a requirement, because some of these do not play in every browser.
+SUPPORTED_VIDEO_EXTENSIONS = {
+    ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi",
 }
 
 TARGET_SAMPLE_RATE = 16000
@@ -46,6 +56,35 @@ def validate_upload(filename: str, size_bytes: int, max_bytes: int) -> str:
             f"'{extension or filename}' is not a supported audio format.",
             supported=sorted(SUPPORTED_EXTENSIONS),
         )
+    return extension
+
+
+def validate_video_upload(
+    filename: str, size_bytes: int | None, max_bytes: int
+) -> str:
+    """Check the filename extension and, when the server already knows it,
+    the size. Returns the normalized extension.
+
+    Size may be None for a multipart upload whose length the parser could not
+    determine; the streaming copy in the route enforces the same limit as the
+    bytes actually arrive.
+    """
+    extension = Path(filename or "").suffix.lower()
+    if extension not in SUPPORTED_VIDEO_EXTENSIONS:
+        raise UnsupportedVideoFormatError(
+            f"'{extension or filename}' is not a supported video format. "
+            f"Upload one of: {', '.join(sorted(SUPPORTED_VIDEO_EXTENSIONS))}.",
+            supported=sorted(SUPPORTED_VIDEO_EXTENSIONS),
+        )
+    if size_bytes is not None:
+        if size_bytes == 0:
+            raise InvalidVideoError("The uploaded video is empty.")
+        if size_bytes > max_bytes:
+            raise VideoTooLargeError(
+                f"The video is {size_bytes // 1_000_000} MB; the limit is "
+                f"{max_bytes // 1_000_000} MB.",
+                limit_bytes=max_bytes,
+            )
     return extension
 
 
@@ -118,27 +157,38 @@ def probe_duration(path: Path) -> float | None:
 
 
 def normalize_to_wav(audio: bytes, extension: str, max_seconds: float) -> tuple[bytes, float]:
-    """Convert any supported upload to 16 kHz mono 16-bit WAV.
+    """Convert any supported audio upload to 16 kHz mono 16-bit WAV.
 
     Every later analysis phase (fluency timing, phoneme recognition) expects a
     single consistent audio format, so normalization happens on ingest.
     Returns the WAV bytes and the source duration in seconds.
     """
-    require_ffmpeg()
-
     with tempfile.TemporaryDirectory() as tmp:
         source = Path(tmp) / f"input{extension}"
-        target = Path(tmp) / "output.wav"
         source.write_bytes(audio)
+        return normalize_path_to_wav(source, max_seconds)
 
-        duration = probe_duration(source)
-        if duration is not None:
-            _enforce_limit(duration, max_seconds)
 
+def normalize_path_to_wav(source: Path, max_seconds: float) -> tuple[bytes, float]:
+    """Extract the audio track from a file already on disk and normalize it.
+
+    Videos are handled by the same path: ffmpeg reads the first audio stream
+    and `-vn` discards the video, so a 200 MB upload is never expanded into a
+    second video file. Returns the WAV bytes and the source duration.
+    """
+    require_ffmpeg()
+
+    duration = probe_duration(source)
+    if duration is not None:
+        _enforce_limit(duration, max_seconds)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / "output.wav"
         result = subprocess.run(
             [
                 "ffmpeg", "-nostdin", "-y",
                 "-i", str(source),
+                "-vn",
                 "-ac", "1",
                 "-ar", str(TARGET_SAMPLE_RATE),
                 "-c:a", "pcm_s16le",

@@ -66,6 +66,10 @@ def classify(method: str, path: str) -> str | None:
         return None
     if path.endswith("/turns") or path.endswith("/turns/text"):
         return "turns"
+    # Video ingestion spends the same speech-to-text quota a turn does, and
+    # accepts a much larger body, so it belongs in the tight bucket too.
+    if path.endswith("/videos/transcribe"):
+        return "turns"
     if "/analysis/" in path:
         return "analysis"
     return None

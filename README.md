@@ -1,7 +1,8 @@
 # Lexa — AI voice conversation and speech coach
 
 Speak to an AI partner, then get feedback on grammar, vocabulary, fluency and
-phoneme-level pronunciation.
+phoneme-level pronunciation. Already have a recording? Upload an English video
+under five minutes and get the same report.
 
 | Folder | What it is |
 |---|---|

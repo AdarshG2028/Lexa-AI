@@ -21,7 +21,7 @@ async def run_english_alternatives(
     alternatives: AlternativesServiceDep,
     repository: AlternativesRepositoryDep,
 ) -> EnglishAlternativesAnalysis:
-    """English alternatives for the phrases and harder words a learner said
+    """English alternatives for the everyday words and phrases a learner said
     in their own language. Only for `language_bridge` conversations; an
     English one is refused rather than analysed into nonsense."""
     session = await conversation.get_session(session_id)

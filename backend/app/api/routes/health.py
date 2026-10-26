@@ -14,6 +14,7 @@ async def health(settings: SettingsDep) -> dict:
         "ffmpeg": ffmpeg_available(),
         "providers": {
             "stt": settings.stt_provider,
+            "stt_language_routes": settings.stt_language_routes,
             "llm": settings.llm_provider,
             "tts": settings.tts_provider,
             "grammar": settings.grammar_provider,

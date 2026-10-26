@@ -8,7 +8,7 @@ stack rather than only on the limiter class.
 
 import pytest
 
-from app.core.ratelimit import SlidingWindowLimiter, client_ip
+from app.core.ratelimit import SlidingWindowLimiter, classify, client_ip
 
 
 class FakeClock:
@@ -24,6 +24,15 @@ def scope_with(forwarded: str | None, peer: str = "10.0.0.1") -> dict:
     if forwarded is not None:
         headers.append((b"x-forwarded-for", forwarded.encode()))
     return {"client": (peer, 5000), "headers": headers}
+
+
+def test_video_ingestion_counts_against_the_turn_limit():
+    """A video upload spends the same speech-to-text quota as a turn."""
+    assert classify("POST", "/api/v1/videos/transcribe") == "turns"
+
+
+def test_only_post_requests_are_counted_against_a_tight_bucket():
+    assert classify("GET", "/api/v1/videos/transcribe") is None
 
 
 # --- the limiter on its own -------------------------------------------------

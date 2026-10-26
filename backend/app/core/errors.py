@@ -47,6 +47,30 @@ class AudioTooLargeError(AppError):
     message = "The uploaded audio is too large."
 
 
+class InvalidVideoError(AppError):
+    code = "INVALID_VIDEO"
+    status_code = 400
+    message = "The uploaded video could not be read."
+
+
+class UnsupportedVideoFormatError(AppError):
+    code = "UNSUPPORTED_VIDEO_FORMAT"
+    status_code = 415
+    message = "That video format is not supported."
+
+
+class VideoTooLargeError(AppError):
+    code = "VIDEO_TOO_LARGE"
+    status_code = 413
+    message = "The uploaded video is too large."
+
+
+class VideoTooLongError(AppError):
+    code = "VIDEO_TOO_LONG"
+    status_code = 413
+    message = "The uploaded video is longer than the limit."
+
+
 class SessionNotFoundError(AppError):
     code = "SESSION_NOT_FOUND"
     status_code = 404

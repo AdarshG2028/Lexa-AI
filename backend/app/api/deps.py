@@ -13,6 +13,7 @@ from app.analysis.repository import AnalysisRepository
 from app.config import Settings, get_settings
 from app.providers.registry import ProviderRegistry
 from app.services.conversation_service import ConversationService
+from app.services.video_service import VideoService
 from app.sessions.repository import SessionRepository
 from app.storage.base import AudioStorage
 from app.storage.local import LocalAudioStorage
@@ -97,9 +98,26 @@ def get_conversation_service(
     )
 
 
+def get_video_service(
+    settings: SettingsDep,
+    registry: Annotated[ProviderRegistry, Depends(get_registry)],
+    sessions: Annotated[SessionRepository, Depends(get_session_repository)],
+    storage: Annotated[AudioStorage, Depends(get_audio_storage)],
+) -> VideoService:
+    """Video ingestion needs STT and storage, but deliberately no LLM or TTS:
+    there is nobody to reply to."""
+    return VideoService(
+        stt=registry.speech_to_text(),
+        sessions=sessions,
+        storage=storage,
+        settings=settings,
+    )
+
+
 ConversationServiceDep = Annotated[
     ConversationService, Depends(get_conversation_service)
 ]
+VideoServiceDep = Annotated[VideoService, Depends(get_video_service)]
 RegistryDep = Annotated[ProviderRegistry, Depends(get_registry)]
 GrammarServiceDep = Annotated[GrammarAnalysisService, Depends(get_grammar_service)]
 VocabularyServiceDep = Annotated[

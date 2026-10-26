@@ -28,7 +28,8 @@ def isolate_environment(monkeypatch):
     monkeypatch.setitem(Settings.model_config, "env_file", None)
     for name in (
         "STT_PROVIDER", "LLM_PROVIDER", "TTS_PROVIDER", "TTS_FALLBACK_PROVIDERS",
-        "GROQ_API_KEY", "DEEPGRAM_API_KEY",
+        "GROQ_API_KEY", "DEEPGRAM_API_KEY", "SARVAM_API_KEY",
+        "SARVAM_STT_LANGUAGES", "SARVAM_STT_MODEL", "SARVAM_BASE_URL",
     ):
         monkeypatch.delenv(name, raising=False)
     # Off unless a test is about limiting, so no test can trip a limit by accident.

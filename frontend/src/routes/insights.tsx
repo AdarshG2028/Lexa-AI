@@ -14,6 +14,7 @@ import {
 
 import {
   PRONUNCIATION_ENABLED,
+  getSession,
   runFluency,
   runGrammar,
   runPronunciation,
@@ -23,6 +24,7 @@ import {
   type FluencyAnalysis,
   type GrammarAnalysis,
   type PronunciationAnalysis,
+  type SessionSummary,
   type VocabularyAnalysis,
 } from "@/lib/api";
 import { formatWait } from "@/lib/format";
@@ -56,11 +58,30 @@ function Insights() {
   const [vocabulary, setVocabulary] = useState<VocabularyAnalysis | null>(null);
   const [fluency, setFluency] = useState<FluencyAnalysis | null>(null);
   const [pronunciation, setPronunciation] = useState<PronunciationAnalysis | null>(null);
+  const [sessionInfo, setSessionInfo] = useState<SessionSummary | null>(null);
 
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<ErrorSummary | null>(null);
   const [pronRunning, setPronRunning] = useState(false);
   const [pronError, setPronError] = useState<ErrorSummary | null>(null);
+
+  // The report itself is the same for a call and an uploaded video; this only
+  // lets the copy name the source correctly. A failed lookup just falls back
+  // to the conversation wording.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    getSession(session)
+      .then((info) => {
+        if (!cancelled) setSessionInfo(info);
+      })
+      .catch(() => {
+        // The analyses below are the part that matters.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
   // Run in sequence rather than in parallel: each one is a provider call, and
   // a failure part-way through should leave the finished sections on screen.
@@ -109,21 +130,31 @@ function Insights() {
     }
   }, [session]);
 
+  const isVideo = sessionInfo?.mode === "video_coach";
+
   if (!session) {
     return (
       <Shell>
         <section className="relative mx-auto w-full max-w-5xl px-6 pb-16">
           <h1 className="mt-6 text-4xl sm:text-5xl">No session to report on</h1>
           <p className="mt-3 max-w-2xl text-muted-foreground">
-            Reports are generated from a conversation you have had. Start one and end it with “End
-            &amp; review”.
+            Reports are generated from a conversation you have had, or from a video you upload.
+            Start a conversation and end it with “End &amp; review”, or bring a clip.
           </p>
-          <Link
-            to="/conversation"
-            className="mt-8 inline-block rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground"
-          >
-            Start a conversation
-          </Link>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              to="/conversation"
+              className="rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground"
+            >
+              Start a conversation
+            </Link>
+            <Link
+              to="/video"
+              className="rounded-lg border border-border px-6 py-3 text-sm font-medium transition-colors hover:bg-secondary"
+            >
+              Upload a video
+            </Link>
+          </div>
         </section>
       </Shell>
     );
@@ -138,11 +169,15 @@ function Insights() {
         >
           <ArrowLeft className="size-4" /> Back home
         </Link>
-        <h1 className="mt-6 text-4xl sm:text-5xl">Your session report</h1>
+        <h1 className="mt-6 text-4xl sm:text-5xl">
+          {isVideo ? "Your video report" : "Your session report"}
+        </h1>
         <p className="mt-3 max-w-2xl text-muted-foreground">
           {fluency
             ? `${fluency.timed_words} words spoken over ${Math.round(fluency.analyzed_seconds)} seconds of speech.`
-            : "Reading your conversation back…"}
+            : isVideo
+              ? "Reading the transcript back…"
+              : "Reading your conversation back…"}
         </p>
 
         {progress && (
@@ -388,17 +423,27 @@ function Insights() {
         )}
 
         <div className="surface glow mt-10 flex flex-col items-center gap-4 rounded-2xl p-10 text-center">
-          <h2 className="text-3xl">Ready for round two?</h2>
+          <h2 className="text-3xl">{isVideo ? "Another clip?" : "Ready for round two?"}</h2>
           <p className="max-w-md text-sm text-muted-foreground">
-            Another conversation gives the analysis more to work with — short sessions rarely
-            contain enough evidence to be sure about a pattern.
+            {isVideo
+              ? "Another video gives the analysis more to work with — short clips rarely contain enough evidence to be sure about a pattern."
+              : "Another conversation gives the analysis more to work with — short sessions rarely contain enough evidence to be sure about a pattern."}
           </p>
-          <Link
-            to="/conversation"
-            className="rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
-          >
-            Start another conversation
-          </Link>
+          {isVideo ? (
+            <Link
+              to="/video"
+              className="rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
+            >
+              Upload another video
+            </Link>
+          ) : (
+            <Link
+              to="/conversation"
+              className="rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
+            >
+              Start another conversation
+            </Link>
+          )}
         </div>
       </section>
     </Shell>

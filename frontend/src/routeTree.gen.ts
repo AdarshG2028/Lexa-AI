@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AlternativesRouteImport } from './routes/alternatives'
 import { Route as ConversationRouteImport } from './routes/conversation'
 import { Route as InsightsRouteImport } from './routes/insights'
+import { Route as VideoRouteImport } from './routes/video'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -34,18 +35,25 @@ const InsightsRoute = InsightsRouteImport.update({
   path: '/insights',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VideoRoute = VideoRouteImport.update({
+  id: '/video',
+  path: '/video',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/alternatives': typeof AlternativesRoute
   '/conversation': typeof ConversationRoute
   '/insights': typeof InsightsRoute
+  '/video': typeof VideoRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/alternatives': typeof AlternativesRoute
   '/conversation': typeof ConversationRoute
   '/insights': typeof InsightsRoute
+  '/video': typeof VideoRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,20 @@ export interface FileRoutesById {
   '/alternatives': typeof AlternativesRoute
   '/conversation': typeof ConversationRoute
   '/insights': typeof InsightsRoute
+  '/video': typeof VideoRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/alternatives' | '/conversation' | '/insights'
+  fullPaths: '/' | '/alternatives' | '/conversation' | '/insights' | '/video'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/alternatives' | '/conversation' | '/insights'
-  id: '__root__' | '/' | '/alternatives' | '/conversation' | '/insights'
+  to: '/' | '/alternatives' | '/conversation' | '/insights' | '/video'
+  id:
+    | '__root__'
+    | '/'
+    | '/alternatives'
+    | '/conversation'
+    | '/insights'
+    | '/video'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +82,7 @@ export interface RootRouteChildren {
   AlternativesRoute: typeof AlternativesRoute
   ConversationRoute: typeof ConversationRoute
   InsightsRoute: typeof InsightsRoute
+  VideoRoute: typeof VideoRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +115,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InsightsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/video': {
+      id: '/video'
+      path: '/video'
+      fullPath: '/video'
+      preLoaderRoute: typeof VideoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,6 +130,7 @@ const rootRouteChildren: RootRouteChildren = {
   AlternativesRoute: AlternativesRoute,
   ConversationRoute: ConversationRoute,
   InsightsRoute: InsightsRoute,
+  VideoRoute: VideoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

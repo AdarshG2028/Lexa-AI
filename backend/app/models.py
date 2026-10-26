@@ -24,13 +24,15 @@ class SessionMode(str, Enum):
     ENGLISH_COACH is the product's core: the learner speaks English and is
     coached on how they said it. LANGUAGE_BRIDGE is a separate feature: the
     learner speaks their own language, is answered in English, and is shown
-    English alternatives for what they said. The two share the conversation
-    machinery but nothing else - none of the English-speech analyses mean
-    anything for a conversation held in another language.
+    English alternatives for what they said. VIDEO_COACH is a finished session
+    built from an uploaded video rather than a live call: it holds one user
+    turn and no assistant reply, and the English analyses run over it exactly
+    as they do for a conversation.
     """
 
     ENGLISH_COACH = "english_coach"
     LANGUAGE_BRIDGE = "language_bridge"
+    VIDEO_COACH = "video_coach"
 
 
 class SessionStatus(str, Enum):
@@ -341,7 +343,7 @@ class EnglishAlternative(BaseModel):
 
 
 class EnglishAlternativesAnalysis(BaseModel):
-    """The language-bridge report: English for the phrases and harder words a
+    """The language-bridge report: the English for common words and phrases a
     learner reached for in their own language.
 
     Deliberately unscored. Whether someone said something well is not the
@@ -382,3 +384,26 @@ class TurnResult(BaseModel):
     tts_provider: str
     history_messages: int
     timings_ms: dict[str, int]
+
+
+class VideoTranscriptionResult(BaseModel):
+    """What the API returns after ingesting a video.
+
+    The session it names is already complete and contains the transcribed
+    turn, so the regular English analysis endpoints can be run against it
+    without any special handling on the client.
+    """
+
+    session_id: str
+    turn_id: str
+    transcript: str
+    language: str | None = None
+    duration_seconds: float
+    word_count: int
+    timings_ms: dict[str, int] = Field(default_factory=dict)
+
+
+class VideoUploadLimits(BaseModel):
+    max_seconds: float
+    max_bytes: int
+    formats: list[str]

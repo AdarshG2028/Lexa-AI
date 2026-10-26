@@ -1,3 +1,5 @@
+import logging
+
 from app.config import Settings
 from app.core.errors import ConfigError
 from app.providers.base import (
@@ -27,6 +29,11 @@ from app.providers.mock.pronunciation import MockPronunciationAnalysisProvider
 from app.providers.mock.stt import MockSpeechToTextProvider
 from app.providers.mock.tts import MockTextToSpeechProvider
 from app.providers.mock.vocabulary import MockVocabularyAnalysisProvider
+from app.providers.routing import LanguageRoutingSpeechToTextProvider
+from app.providers.sarvam.client import SarvamClient
+from app.providers.sarvam.stt import SarvamSpeechToTextProvider
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderRegistry:
@@ -37,6 +44,7 @@ class ProviderRegistry:
         self._settings = settings
         self._groq_client: GroqClient | None = None
         self._deepgram_client: DeepgramClient | None = None
+        self._sarvam_client: SarvamClient | None = None
         # Held across requests: the weights cost seconds to load.
         self._pronunciation = None
 
@@ -50,13 +58,45 @@ class ProviderRegistry:
             self._deepgram_client = DeepgramClient(self._settings)
         return self._deepgram_client
 
-    def speech_to_text(self) -> SpeechToTextProvider:
+    def _sarvam(self) -> SarvamClient:
+        if self._sarvam_client is None:
+            self._sarvam_client = SarvamClient(self._settings)
+        return self._sarvam_client
+
+    def _default_speech_to_text(self) -> SpeechToTextProvider:
         name = self._settings.stt_provider
         if name == "groq":
             return GroqSpeechToTextProvider(self._groq(), self._settings)
         if name == "mock":
             return MockSpeechToTextProvider()
         raise ConfigError(f"Unknown STT_PROVIDER: {name!r}")
+
+    def speech_to_text(self) -> SpeechToTextProvider:
+        """The default STT provider, with Sarvam serving the languages it was
+        configured for.
+
+        Sarvam is only wired in when a key is present. A missing key must not
+        break conversations in Kannada, Tamil or Telugu: they keep working on
+        the default provider, and the reason is logged at startup.
+        """
+        default = self._default_speech_to_text()
+        codes = self._settings.sarvam_languages
+
+        if self._settings.stt_provider == "mock" or not codes:
+            return default
+
+        if not self._settings.sarvam_api_key:
+            logger.debug(
+                "SARVAM_STT_LANGUAGES lists %s but SARVAM_API_KEY is empty; "
+                "those languages will use %s.",
+                ",".join(codes), self._settings.stt_provider,
+            )
+            return default
+
+        sarvam = SarvamSpeechToTextProvider(self._sarvam(), self._settings)
+        return LanguageRoutingSpeechToTextProvider(
+            default, {code: sarvam for code in codes}
+        )
 
     def llm(self) -> LLMProvider:
         name = self._settings.llm_provider
@@ -144,3 +184,6 @@ class ProviderRegistry:
         if self._deepgram_client is not None:
             await self._deepgram_client.close()
             self._deepgram_client = None
+        if self._sarvam_client is not None:
+            await self._sarvam_client.close()
+            self._sarvam_client = None

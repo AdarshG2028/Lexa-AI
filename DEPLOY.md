@@ -31,6 +31,7 @@ Tables are created on first start.
    | `CORS_ALLOWED_ORIGINS` | your Vercel URL, e.g. `https://lexa-ai.vercel.app` (fill in after step 3, then redeploy) |
    | `CORS_ALLOWED_ORIGIN_REGEX` | optional: `https://lexa-.*\.vercel\.app` to allow preview deployments |
    | `DEEPGRAM_API_KEY` | optional fallback voice |
+   | `SARVAM_API_KEY` | optional: better Kannada, Tamil and Telugu transcription. Without it those languages fall back to Groq |
    | `ALTERNATIVES_PROVIDER` | `groq` - turns on English alternatives for conversations held in Hindi, Kannada, Tamil or Telugu. Left unset it is `mock`, which only recognises a few canned phrases |
 
 3. When it is live, check `https://<your-service>.onrender.com/health`. It should

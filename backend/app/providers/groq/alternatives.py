@@ -14,35 +14,34 @@ from app.providers.groq.client import GroqClient
 
 logger = logging.getLogger(__name__)
 
-# The difficulty line is stated concretely, with examples on both sides of
-# it. "Relatively harder" left to the model's own taste would drift between
-# runs; an explicit test (would a beginner already know the English?) does not.
+# "Popular" is stated as a concrete test: a word an everyday speaker reaches
+# for, not a rare or formal one. The old wording asked for "harder" words,
+# which is what produced English-to-English synonym upgrades.
 SYSTEM_PROMPT = """You help someone who speaks {name} learn the English for \
-things they actually said.
+words and phrases they actually used.
 
 They spoke {name} ({script} script) in a conversation. You are given their \
 sentences exactly as speech recognition wrote them.
 
 {speech_notes}
 
-Pick the expressions worth learning the English for, and give the English.
+Pick the words and expressions they said that are worth knowing the English \
+for, and give the English.
 
 INCLUDE
-- Phrases: multi-word expressions, idioms, fixed expressions and common \
-collocations, especially where the natural English is not a word-for-word \
-translation.
-- Harder words: a single word whose English equivalent is a less common, \
-longer or more formal word.
+- Common words: everyday {name} words a learner is likely to reach for and may \
+not know in English - the kind of word that appears in ordinary conversation \
+about work, money, time, plans, feelings and daily life.
+- Phrases: multi-word expressions, idioms and fixed expressions, especially \
+where the natural English is not a word-for-word translation.
 
 LEAVE OUT
-- Easy words. The test: would someone with a basic English vocabulary already \
-know the English for it? If yes, leave it out. Easy: water, food, go, come, \
-big, small, friend, work, house, today, because, time, very, good.
-- Words that are already English, however they are written.
+- Anything written in Latin letters. Every "original" must be {script} script \
+only - never English letters, and never a span that mixes the two scripts.
+- English words written in {script}. Everyday speech is full of them and the \
+learner already knows them. {loanword_note}
 - Names of people and places, numbers, and greetings.
-
-Worth including: postpone, reluctant, responsibility, convenient, \
-"take care of", "as soon as possible", "make up your mind", "run out of".
+- Anything the learner already said in English.
 
 RULES
 - "original" is copied exactly as written in their sentence, in {script} \
@@ -50,17 +49,18 @@ script, with any suffixes. Never rewrite, correct or transliterate it, even if \
 it looks misspelled.
 - "original" is the SHORTEST span that carries the expression: one word, or a \
 phrase of two to five words. Never a whole sentence or clause. If a sentence \
-contains one hard word, give that word alone, not the sentence around it. \
-Example: from "This work is very challenging" give the word for "challenging", \
-not the whole sentence.
+contains one useful word, give that word alone, not the sentence around it.
 - "english" is the natural, reusable English for that span, in Latin script \
-only: a word ("challenging", "opportunity") or a chunk a learner could drop \
-into other sentences ("learn from experience", "be patient", "postpone the \
-meeting"). Do not give a full sentence and do not add a subject such as I or \
-we. For a phrase, give what a native speaker would say, not a word-for-word \
-translation.
-- "example" is one short, simple English sentence that uses "english", written in the first person (I / we) so it reads as the learner saying it.
-- The sentences come from speech recognition and may be misspelled. If a word looks misspelled, work out the word they most likely said from the sentence around it. If you cannot tell what was meant, leave it out: a wrong English word is worse than a missing one.
+only: a word ("work", "need", "hurry") or a chunk a learner could drop into \
+other sentences ("take care of", "as soon as possible"). Do not give a full \
+sentence and do not add a subject such as I or we. Never answer with a fancier \
+synonym of an English word: the left side must be {name}, the right side English.
+- "example" is one short, simple English sentence that uses "english", written \
+in the first person (I / we) so it reads as the learner saying it.
+- The sentences come from speech recognition and may be misspelled. If a word \
+looks misspelled, work out the word they most likely said from the sentence \
+around it. If you cannot tell what was meant, leave it out: a wrong English \
+word is worse than a missing one.
 - Prefer fewer, better items: at most 12, most useful first, no duplicates.
 - If nothing qualifies, return an empty list.
 
@@ -115,7 +115,20 @@ def _prompt_for(language: SpokenLanguage) -> str:
         name=language.name,
         script=language.script,
         speech_notes=language.speech_notes,
+        loanword_note=_loanword_note(language),
     )
+
+
+def _loanword_note(language: SpokenLanguage) -> str:
+    """A few concrete loanwords, so the exclusion is not left to guesswork.
+
+    Only languages whose list is populated get examples; the rule above still
+    applies to the others.
+    """
+    if not language.loanwords:
+        return ""
+    examples = sorted(language.loanwords)[:10]
+    return f"Examples in {language.script} script: {', '.join(examples)}."
 
 
 def _parse(response) -> dict:

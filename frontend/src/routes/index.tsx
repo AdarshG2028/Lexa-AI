@@ -1,5 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Mic, Waves, SpellCheck, AudioLines, ArrowRight, ArrowUpRight } from "lucide-react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  AudioLines,
+  FileVideo,
+  Mic,
+  SpellCheck,
+  Waves,
+} from "lucide-react";
 
 import { SPOKEN_LANGUAGES } from "@/lib/languages";
 
@@ -65,6 +73,12 @@ function Landing() {
             className="rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
             Sample report
+          </Link>
+          <Link
+            to="/video"
+            className="rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            Upload video
           </Link>
           <Link
             to="/conversation"
@@ -177,6 +191,32 @@ function Landing() {
       </section>
 
       <section className="relative mx-auto w-full max-w-6xl px-6 pb-28">
+        <div className="surface flex flex-col items-start justify-between gap-6 rounded-2xl p-8 sm:flex-row sm:items-center sm:p-10">
+          <div className="flex items-start gap-4">
+            <div className="surface flex size-12 shrink-0 items-center justify-center rounded-xl">
+              <FileVideo className="size-6 text-accent" />
+            </div>
+            <div>
+              <span className="font-mono text-[11px] tracking-wide text-muted-foreground uppercase">
+                Already recorded?
+              </span>
+              <h2 className="mt-2 text-3xl">Upload a video instead</h2>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+                Have an English clip under five minutes? Upload it and get the same grammar, word
+                choice and fluency report — no call needed.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/video"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-6 py-3 font-medium transition-colors hover:bg-secondary"
+          >
+            Upload a video <ArrowRight className="size-4" />
+          </Link>
+        </div>
+      </section>
+
+      <section className="relative mx-auto w-full max-w-6xl px-6 pb-28">
         <div className="surface rounded-2xl p-8 sm:p-10">
           <div className="grid gap-8 lg:grid-cols-[1fr_1.1fr] lg:items-center">
             <div>
@@ -186,7 +226,7 @@ function Landing() {
               <h2 className="mt-3 text-3xl sm:text-4xl">Start in your own language</h2>
               <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
                 Talk the way you normally would. Lexa answers in simple English, and when you finish
-                you get the English for the phrases and harder words you reached for.
+                you get the English for the everyday words and phrases you reached for.
               </p>
             </div>
             <ul className="grid grid-cols-2 gap-3">

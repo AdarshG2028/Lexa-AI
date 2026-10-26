@@ -7,10 +7,13 @@ communicate: grammar, vocabulary, fluency, and phoneme-level pronunciation.
 This repository contains the **backend and AI pipeline only**. There is no
 frontend; a future web or mobile client will consume these APIs.
 
-**Current status: Phase 7 complete.** You can hold a multi-turn spoken
-conversation, the AI remembers what was said earlier, the whole conversation is
-persisted and retrievable as a transcript, and the backend analyses the user's
-grammar, vocabulary, fluency and phoneme-level pronunciation afterwards.
+**Current status: Phase 7 complete, plus English video review.** You can hold a
+multi-turn spoken conversation, the AI remembers what was said earlier, the
+whole conversation is persisted and retrievable as a transcript, and the backend
+analyses the user's grammar, vocabulary, fluency and phoneme-level
+pronunciation afterwards. An English video under five minutes can be uploaded
+instead of holding a live call; it becomes a completed session and runs through
+the same analyses.
 
 ---
 
@@ -82,6 +85,12 @@ The application depends on three `typing.Protocol` interfaces in
 | `VocabularyAnalysisProvider` | `GroqVocabularyAnalysisProvider` | `MockVocabularyAnalysisProvider` (thesaurus) |
 | `LLMProvider` | `GroqLLMProvider` | `MockLLMProvider` |
 | `TextToSpeechProvider` | `GroqTextToSpeechProvider`, `DeepgramTextToSpeechProvider` | `MockTextToSpeechProvider` |
+
+Speech-to-text has a second vendor: `SarvamSpeechToTextProvider` serves the
+bridge languages it was configured for (Kannada, Tamil, Telugu by default),
+while `LanguageRoutingSpeechToTextProvider` sends everything else to Groq. The
+routing layer is invisible to the conversation service, which only passes the
+language being spoken.
 
 `app/providers/registry.py` is the single place that maps a configured provider
 name to a class. Groq's HTTP responses are converted into application models
@@ -405,8 +414,8 @@ Set `HF_HOME=./data/models` to keep ~1.9 GB of weights off the system drive.
 
 A separate feature from everything above. The learner speaks their own
 language - Hindi, Kannada, Tamil or Telugu - is answered in simple English, and
-at the end is shown the English for the phrases and harder words they reached
-for. English coaching stays the core product; this sits beside it.
+at the end is shown the English for the common words and phrases they used.
+English coaching stays the core product; this sits beside it.
 
 ```
 POST /api/v1/sessions   {"mode": "language_bridge", "spoken_language": "ta"}
@@ -418,27 +427,58 @@ How it differs from an English session, and why:
 
 - **The language is pinned, never detected.** Auto-detection called Kannada
   "Tamil" and Telugu "Hindi" in testing; the learner has told us what they
-  speak, so recognition is told too. Conversations in another language use
-  `GROQ_STT_BRIDGE_MODEL` (`whisper-large-v3`), which matched turbo on Hindi
-  and was clearly better on Tamil and Telugu for about 0.3 s more per turn.
+  speak, so recognition is told too. Kannada, Tamil and Telugu are transcribed
+  by **Sarvam** (`saaras:v4`), which handles Indian languages better than
+  Whisper. Hindi and English stay on Groq (`whisper-large-v3` for bridge
+  conversations, `whisper-large-v3-turbo` for English). The switch is
+  configured by `SARVAM_STT_LANGUAGES`; without a key those languages keep
+  working on Groq instead of failing.
 - **The English analyses refuse these conversations**, and this one refuses
   English ones, with `ANALYSIS_NOT_APPLICABLE`. Scoring a Hindi transcript as if
   it were English would store a number that means nothing.
+- **The left-hand side must really be the learner's language.** A suggestion
+  whose `original` is written in Latin letters, mixes scripts, or is an English
+  loanword written in that language's script (मीटिंग, ಆಫೀಸ್, மீட்டிங், మీటింగ్)
+  is dropped in code, not left to the model's judgement. That is what stops the
+  report from "improving" English the learner already said.
 - **Nothing is reported that was not said.** Each item's `original` must match
   words actually transcribed (tolerating the spelling noise recognition adds to
   these languages) and is replaced by the transcribed text, so what the learner
   sees is what was heard - never the model's tidied or invented version.
   Spans longer than a phrase, English that is still in the learner's script, and
   duplicates are dropped.
-- **Easy words are left out on purpose.** "Relatively harder words" is a
-  judgement, so the prompt states the test (would someone with a basic English
-  vocabulary already know it?) rather than leaving it to the model's taste.
+- **Common words come first.** The prompt asks for everyday words the learner
+  may not know in English, and a per-language common-word list orders the
+  survivors so the most reusable ones make the 12-item cap. It never hides an
+  item the provider proposed.
 - **It is not scored.** Whether something was said well is not the question.
 
-Measured accuracy of recognition, with clean synthesised speech (so an upper
-bound; real microphones will be worse): Hindi near-perfect, Tamil close behind,
-Kannada understandable with spelling noise, Telugu the weakest. A mis-heard
-word can become the wrong English, which is why the report carries a caveat.
+Recognition accuracy depends on the engine: Hindi runs on Whisper, which was
+near-perfect on clean synthesised speech; Kannada, Tamil and Telugu run on
+Sarvam, chosen because it handles Indian languages better than Whisper. Real
+microphones are worse than clean speech either way, and a mis-heard word can
+become the wrong English, which is why the report carries a caveat for the
+languages where recognition is weakest.
+
+### Video review
+
+An English video under five minutes can be uploaded instead of holding a live
+call. `POST /api/v1/videos/transcribe` streams the upload to a temporary file,
+extracts the first audio track with ffmpeg, transcribes it with English pinned,
+and stores a completed `video_coach` session with one user turn and no assistant
+reply. From there the ordinary grammar, vocabulary and fluency endpoints work
+unchanged - the analyses only ever cared about a user turn with speech in it.
+
+- The video itself is not kept: only the normalised 16 kHz mono WAV, the
+  transcript and the word timings are stored.
+- `MAX_AUDIO_SECONDS` (300 by default) is the duration cap;
+  `MAX_VIDEO_UPLOAD_BYTES` (200 MB) is the separate size cap. The upload is
+  streamed to disk a megabyte at a time rather than read into memory.
+- Ingestion makes no LLM or TTS call. The report is generated when the client
+  calls the analysis endpoints, so a slow provider does not hold the upload
+  open any longer than transcription already does.
+- `GET /api/v1/videos/limits` reports the formats and limits the frontend needs
+  to validate a file before uploading it.
 
 ### Project layout
 
@@ -448,7 +488,7 @@ app/
   config.py                     centralized settings from environment
   models.py                     Session, Turn, and provider-neutral DTOs
   api/deps.py                   dependency injection wiring
-  api/routes/                   conversation.py, health.py
+  api/routes/                   conversation.py, analysis.py, video.py, health.py
   conversation/history.py       trims session turns into LLM messages
   conversation/prompts.py       the conversation-partner system prompt
   conversation/transcript.py    flattens turns into a speaker transcript
@@ -463,9 +503,12 @@ app/
   db/models.py                  SQLAlchemy tables + UTC datetime handling
   db/engine.py                  engine, session factory, table creation
   services/conversation_service.py   the turn orchestration
+  services/video_service.py     video ingest: ffmpeg, STT, finished session
   providers/base.py             the three provider interfaces
   providers/groq/               client.py + stt.py, llm.py, tts.py
   providers/deepgram/           client.py + tts.py
+  providers/sarvam/             client.py + stt.py (Kannada, Tamil, Telugu)
+  providers/routing.py          STT by spoken language
   providers/fallback.py         TTS chain: degrade rather than fail
   providers/mock/               offline implementations
   audio/processing.py           ffmpeg validation and normalization
@@ -505,6 +548,10 @@ Then edit `.env`.
 | `GROQ_GRAMMAR_MODEL` | Blank uses `GROQ_LLM_MODEL` |
 | `TTS_FALLBACK_PROVIDERS` | Ordered fallbacks, e.g. `groq,mock` |
 | `DEEPGRAM_API_KEY`, `DEEPGRAM_TTS_MODEL` | Deepgram credentials and voice |
+| `SARVAM_API_KEY` | Sarvam credentials. Without it, `SARVAM_STT_LANGUAGES` stays on Groq. |
+| `SARVAM_STT_MODEL` | Defaults to `saaras:v4` |
+| `SARVAM_STT_MODE` | Blank uses the model's default; `transcribe` forces native-script output |
+| `SARVAM_STT_LANGUAGES` | ISO 639-1 codes routed to Sarvam, default `kn,ta,te` |
 | `GROQ_API_KEY` | Groq API key. Never commit this. |
 | `GROQ_BASE_URL` | Defaults to Groq's OpenAI-compatible endpoint |
 | `GROQ_STT_MODEL` | e.g. `whisper-large-v3-turbo` |
@@ -513,7 +560,8 @@ Then edit `.env`.
 | `PROVIDER_CONNECT_TIMEOUT`, `PROVIDER_READ_TIMEOUT` | Seconds. The read timeout must be generous; Whisper on a long clip exceeds httpx's 5s default. |
 | `CONVERSATION_HISTORY_TURNS`, `CONVERSATION_HISTORY_MAX_CHARS` | How much conversation the model sees each turn |
 | `SESSION_IDLE_TIMEOUT_MINUTES` | Idle time after which a session stops accepting turns |
-| `MAX_UPLOAD_BYTES`, `MAX_AUDIO_SECONDS` | Upload limits |
+| `MAX_UPLOAD_BYTES`, `MAX_AUDIO_SECONDS` | Audio upload limits; the duration cap also applies to videos |
+| `MAX_VIDEO_UPLOAD_BYTES` | Size cap for the video-review upload, default 200 MB |
 | `SESSION_STORE` | `database` or `memory` |
 | `DATABASE_URL` | Defaults to `sqlite+aiosqlite:///./data/voice_ai.db` |
 | `STORAGE_LOCAL_PATH` | Where audio is written |
@@ -574,8 +622,9 @@ Base path `/api/v1`. All errors share one envelope:
 ```
 
 Codes: `INVALID_AUDIO`, `UNSUPPORTED_AUDIO_FORMAT`, `AUDIO_TOO_LARGE`,
-`SESSION_NOT_FOUND`, `SESSION_NOT_ACTIVE`, `SESSION_EXPIRED`,
-`TURN_NOT_FOUND`, `PROVIDER_UNAVAILABLE`,
+`INVALID_VIDEO`, `UNSUPPORTED_VIDEO_FORMAT`, `VIDEO_TOO_LARGE`,
+`VIDEO_TOO_LONG`, `SESSION_NOT_FOUND`, `SESSION_NOT_ACTIVE`,
+`SESSION_EXPIRED`, `TURN_NOT_FOUND`, `PROVIDER_UNAVAILABLE`,
 `PROVIDER_TIMEOUT`, `PROVIDER_BAD_RESPONSE`, `CONFIG_ERROR`, `STORAGE_ERROR`,
 `ANALYSIS_NOT_FOUND`, `ANALYSIS_NOT_APPLICABLE`, `UNSUPPORTED_LANGUAGE`,
 `VALIDATION_ERROR`, `INTERNAL_ERROR`.
@@ -600,8 +649,11 @@ Codes: `INVALID_AUDIO`, `UNSUPPORTED_AUDIO_FORMAT`, `AUDIO_TOO_LARGE`,
 | `GET` | `/api/v1/sessions/{id}/analysis/fluency` | The stored fluency analysis |
 | `POST` | `/api/v1/sessions/{id}/analysis/pronunciation` | Run phoneme analysis (slow) |
 | `GET` | `/api/v1/sessions/{id}/analysis/pronunciation` | The stored pronunciation analysis |
+| `GET` | `/api/v1/videos/limits` | Video formats, duration limit and size limit |
+| `POST` | `/api/v1/videos/transcribe` | Video in; a completed `video_coach` session out |
 
-Supported upload formats: `flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm`.
+Audio upload formats: `flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm`. Video
+review formats: `mp4, mov, m4v, webm, mkv, avi`.
 
 ### Example
 

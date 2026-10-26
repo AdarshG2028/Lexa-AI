@@ -27,12 +27,28 @@ export type TurnResult = {
 
 export type SessionSummary = {
   id: string;
-  mode: "english_coach" | "language_bridge";
+  mode: "english_coach" | "language_bridge" | "video_coach";
   spoken_language: SpokenLanguageCode | null;
   status: "active" | "completed" | "expired";
   started_at: string;
   duration_seconds: number;
   turn_count: number;
+};
+
+export type VideoTranscriptionResult = {
+  session_id: string;
+  turn_id: string;
+  transcript: string;
+  language: string | null;
+  duration_seconds: number;
+  word_count: number;
+  timings_ms: Record<string, number>;
+};
+
+export type VideoUploadLimits = {
+  max_seconds: number;
+  max_bytes: number;
+  formats: string[];
 };
 
 export type GrammarIssue = {
@@ -274,6 +290,72 @@ export function sendTextTurn(sessionId: string, text: string): Promise<TurnResul
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
+  });
+}
+
+/** Server-side limits, so the upload page never hardcodes a stale number. */
+export function getVideoLimits(): Promise<VideoUploadLimits> {
+  return request<VideoUploadLimits>("/api/v1/videos/limits");
+}
+
+/**
+ * Uploads a video and returns the finished session that was built from it.
+ *
+ * Uses XMLHttpRequest rather than fetch for one reason: a video can be
+ * hundreds of megabytes, and `fetch` reports nothing until the whole body has
+ * gone. Upload progress is the difference between "working" and "frozen" on a
+ * slow connection.
+ */
+export function transcribeVideo(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<VideoTranscriptionResult> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE_URL}/api/v1/videos/transcribe`);
+    xhr.responseType = "json";
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      const body = xhr.response as {
+        error?: { code?: string; message?: string; details?: unknown };
+      } | null;
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as VideoTranscriptionResult);
+        return;
+      }
+
+      const envelope = body?.error;
+      reject(
+        new ApiError(
+          envelope?.code ?? "HTTP_ERROR",
+          envelope?.message ?? `Upload failed with status ${xhr.status}.`,
+          xhr.status,
+          envelope?.details,
+        ),
+      );
+    };
+
+    xhr.onerror = () => {
+      reject(
+        new ApiError(
+          "NETWORK_ERROR",
+          `Could not reach the backend at ${BASE_URL}. Is the API server running?`,
+          0,
+        ),
+      );
+    };
+
+    xhr.send(form);
   });
 }
 

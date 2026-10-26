@@ -91,7 +91,7 @@ class EnglishAlternativesService:
             )
 
         proposed = await self._provider.suggest(language, utterances)
-        items = clean(proposed, utterances)
+        items = clean(proposed, utterances, language)
 
         dropped = len(proposed) - len(items)
         if dropped:
@@ -103,8 +103,8 @@ class EnglishAlternativesService:
         note = ""
         if not items:
             note = (
-                "Nothing stood out: the words and phrases you used were "
-                "mostly everyday ones you will already know in English."
+                "Nothing stood out: you mostly used words that are already "
+                "English, or there was not enough to translate."
             )
         elif language.accuracy_note:
             note = language.accuracy_note
@@ -120,13 +120,21 @@ class EnglishAlternativesService:
 
 
 def clean(
-    proposed: list[EnglishAlternative], utterances: list[UserUtterance]
+    proposed: list[EnglishAlternative],
+    utterances: list[UserUtterance],
+    language: SpokenLanguage | None = None,
 ) -> list[EnglishAlternative]:
-    """Keeps only items that are real, English, distinct and few.
+    """Keeps only items that are real, in the right language, English,
+    distinct and few.
 
     Each kept item has its `original` replaced by the transcribed text it was
     matched to, so what is shown is always what was actually said - never the
     model's tidied or invented version of it.
+
+    `language` enables the checks that need to know which script counts as
+    "not English": the span must be written in that script, and it must not be
+    an English loanword wearing it. Passing None keeps the older behaviour for
+    callers that only have the transcript.
     """
     kept: list[EnglishAlternative] = []
     seen: set[str] = set()
@@ -142,6 +150,15 @@ def clean(
         original, turn_id = match
         if len(original.split()) > MAX_ORIGINAL_WORDS:
             continue
+
+        if language is not None:
+            # The point of this report is "word in the learner's language ->
+            # English". A left-hand side in Latin letters, or one that is
+            # really an English loanword, is the failure this guards against.
+            if not _in_script(original, language):
+                continue
+            if _is_loanword(original, language):
+                continue
 
         key = _normalise(original)
         if key in seen or key == _normalise(english):
@@ -162,10 +179,82 @@ def clean(
                 example=item.example.strip(),
             )
         )
-        if len(kept) >= MAX_ITEMS:
-            break
 
-    return kept
+    if language is not None:
+        kept = _rank(kept, language)
+    return kept[:MAX_ITEMS]
+
+
+# Words that only carry grammar are ignored when deciding whether a span is
+# "all loanword": "मीटिंग में" is as much an English word as "मीटिंग". Each
+# language supplies its own list; an empty list just means no tokens are
+# skipped.
+
+
+def _rank(
+    items: list[EnglishAlternative], language: SpokenLanguage
+) -> list[EnglishAlternative]:
+    """Common words first, then the provider's own order.
+
+    A learner is more likely to reuse "work" than an unusual word they said
+    once, and the provider cannot know which of its items matters most. The
+    ranking never removes anything; it only decides what survives the cap.
+    """
+    if not language.common_words:
+        return items
+
+    common_words = {_normalise(word) for word in language.common_words}
+
+    def sort_key(pair: tuple[int, EnglishAlternative]) -> tuple[int, int]:
+        index, item = pair
+        words = {_normalise(word) for word in item.original.split()}
+        common = bool(words & common_words)
+        return (0 if common else 1, index)
+
+    return [item for _, item in sorted(enumerate(items), key=sort_key)]
+
+
+def _in_script(text: str, language: SpokenLanguage) -> bool:
+    """True when the span is written in the language's own script.
+
+    Any Latin letter disqualifies it: that is an English word the model
+    returned instead of a translation, or a span that mixes the two scripts.
+    At least one letter from the language's block must remain, so a bare
+    number or punctuation mark is not accepted either.
+    """
+    low, high = language.script_range
+    found = False
+    for char in text:
+        if not char.isalpha():
+            continue
+        code = ord(char)
+        if 0x0041 <= code <= 0x024F:
+            return False
+        if low <= code <= high:
+            found = True
+    return found
+
+
+def _is_loanword(text: str, language: SpokenLanguage) -> bool:
+    """True when every content word in the span is a known English loanword.
+
+    Grammar words are ignored, so a loanword with a postposition attached
+    ("मीटिंग में", "ಮೀಟಿಂಗ್ ನಲ್ಲಿ") still counts as the loanword. A span that
+    also carries a real word in the language survives, because there is still
+    something to translate.
+    """
+    if not language.loanwords:
+        return False
+    loanwords = {_normalise(word) for word in language.loanwords}
+    function_words = {_normalise(word) for word in language.function_words}
+    content = [
+        normalised
+        for token in text.split()
+        if (normalised := _normalise(token))
+        and normalised not in function_words
+    ]
+    return bool(content) and all(token in loanwords for token in content)
+
 
 
 def _locate(

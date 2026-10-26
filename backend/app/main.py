@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import alternatives, analysis, conversation, health
+from app.api.routes import alternatives, analysis, conversation, health, video
 from app.audio.processing import ffmpeg_available
 from app.config import get_settings
 from app.core.errors import AppError
@@ -46,10 +46,22 @@ async def lifespan(app: FastAPI):
             "A Groq provider is selected but GROQ_API_KEY is empty. "
             "Set it in .env, or use the mock providers to run offline."
         )
+    if (
+        settings.stt_provider != "mock"
+        and settings.sarvam_languages
+        and not settings.sarvam_api_key
+    ):
+        logger.warning(
+            "SARVAM_STT_LANGUAGES lists %s but SARVAM_API_KEY is empty; "
+            "those languages will use %s. Add the key to switch them to Sarvam.",
+            ",".join(settings.sarvam_languages), settings.stt_provider,
+        )
     logger.info(
         "Providers: stt=%s llm=%s tts=%s",
         settings.stt_provider, settings.llm_provider, settings.tts_provider,
     )
+    if settings.stt_language_routes:
+        logger.info("STT language routes: %s", settings.stt_language_routes)
 
     app.state.registry = ProviderRegistry(settings)
     app.state.engine = None
@@ -106,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(conversation.router)
     app.include_router(analysis.router)
     app.include_router(alternatives.router)
+    app.include_router(video.router)
 
     @app.exception_handler(AppError)
     async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:

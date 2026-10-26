@@ -343,7 +343,7 @@ async def test_the_accuracy_caveat_is_shown_for_languages_that_need_one(client):
         await client.post(f"/api/v1/sessions/{session_id}/analysis/english-alternatives")
     ).json()
 
-    assert "less accurately" in body["note"]
+    assert "imperfect" in body["note"]
 
 
 def test_the_alternatives_endpoint_counts_against_the_analysis_limit():
@@ -437,6 +437,175 @@ def test_an_item_is_attributed_to_the_turn_it_came_from():
     )
 
     assert items[0].turn_id == "t1"
+
+
+# --- the left-hand side must really be the learner's language -------------
+
+
+def test_an_english_word_in_latin_letters_is_not_reported():
+    """The failure this fixes: a Hinglish transcript contains "office", and
+    the model upgrades it to "workplace" instead of translating Hindi."""
+    items = clean(
+        [alt("office", "workplace")],
+        said("मुझे office जाना है"),
+        HINDI,
+    )
+
+    assert items == []
+
+
+def test_a_span_that_mixes_scripts_is_dropped():
+    items = clean(
+        [alt("काम work", "work")],
+        said("मुझे काम work करना है"),
+        HINDI,
+    )
+
+    assert items == []
+
+
+def test_an_english_loanword_written_in_devanagari_is_not_reported():
+    items = clean(
+        [alt("मीटिंग", "meeting")],
+        said("कल मीटिंग है"),
+        HINDI,
+    )
+
+    assert items == []
+
+
+def test_a_loanword_with_a_hindi_postposition_is_still_not_reported():
+    """The content word is English; the postposition does not make it Hindi."""
+    items = clean(
+        [alt("मीटिंग में", "in the meeting")],
+        said("मीटिंग में बात हुई"),
+        HINDI,
+    )
+
+    assert items == []
+
+
+def test_a_common_hindi_word_is_reported():
+    items = clean([alt("काम", "work")], said("मुझे काम करना है"), HINDI)
+
+    assert [(item.original, item.english) for item in items] == [("काम", "work")]
+
+
+def test_common_words_are_ranked_before_rarer_ones():
+    items = clean(
+        [alt("दुर्लभ", "rare"), alt("काम", "work")],
+        said("यह दुर्लभ है और काम भी है"),
+        HINDI,
+    )
+
+    assert [item.english for item in items] == ["work", "rare"]
+
+
+def test_each_language_has_a_script_range_that_matches_its_script():
+    ranges = {language.code: language.script_range for language in SUPPORTED_LANGUAGES}
+
+    assert ranges["hi"] == (0x0900, 0x097F)
+    assert ranges["kn"] == (0x0C80, 0x0CFF)
+    assert ranges["ta"] == (0x0B80, 0x0BFF)
+    assert ranges["te"] == (0x0C00, 0x0C7F)
+
+
+@pytest.mark.parametrize("code", ["hi", "kn", "ta", "te"])
+def test_every_language_has_the_data_the_report_filters_on(code):
+    """The checks are shared; the word lists are per-language. A language with
+    an empty list would silently lose the loanword or ranking behaviour."""
+    from app.analysis.alternatives import _in_script
+
+    language = get_language(code)
+    assert language is not None
+    assert language.loanwords
+    assert language.common_words
+    assert language.function_words
+
+    # A typo that slipped in Latin letters would defeat the script check.
+    for word in (*language.loanwords, *language.common_words):
+        assert _in_script(word, language), word
+
+
+@pytest.mark.parametrize(
+    ("code", "transcript", "original", "english"),
+    [
+        ("kn", "ನಾಳೆ ಮೀಟಿಂಗ್ ಇದೆ", "ಮೀಟಿಂಗ್", "meeting"),
+        ("ta", "நாளை மீட்டிங் இருக்கிறது", "மீட்டிங்", "meeting"),
+        ("te", "రేపు మీటింగ్ ఉంది", "మీటింగ్", "meeting"),
+    ],
+)
+def test_an_english_loanword_is_dropped_in_every_language(
+    code, transcript, original, english
+):
+    items = clean([alt(original, english)], said(transcript), get_language(code))
+
+    assert items == []
+
+
+@pytest.mark.parametrize(
+    ("code", "transcript", "original", "english"),
+    [
+        ("kn", "ನಾನು office ಗೆ ಹೋಗುತ್ತೇನೆ", "office", "workplace"),
+        ("ta", "நான் office க்கு போகிறேன்", "office", "workplace"),
+        ("te", "నేను office కి వెళ్తాను", "office", "workplace"),
+    ],
+)
+def test_a_latin_script_word_is_dropped_in_every_language(
+    code, transcript, original, english
+):
+    items = clean([alt(original, english)], said(transcript), get_language(code))
+
+    assert items == []
+
+
+@pytest.mark.parametrize(
+    ("code", "transcript", "original", "english"),
+    [
+        ("kn", "ನನಗೆ ಕೆಲಸ ಇದೆ", "ಕೆಲಸ", "work"),
+        ("ta", "எனக்கு வேலை இருக்கிறது", "வேலை", "work"),
+        ("te", "నాకు పని ఉంది", "పని", "work"),
+    ],
+)
+def test_a_common_word_is_reported_in_every_language(
+    code, transcript, original, english
+):
+    items = clean([alt(original, english)], said(transcript), get_language(code))
+
+    assert [(item.original, item.english) for item in items] == [(original, english)]
+
+
+@pytest.mark.parametrize(("code", "transcript", "span"), [
+    ("kn", "ಮೀಟಿಂಗ್ ನಲ್ಲಿ ಮಾತು ಆಯಿತು", "ಮೀಟಿಂಗ್ ನಲ್ಲಿ"),
+    ("te", "మీటింగ్ లో మాట్లాడాం", "మీటింగ్ లో"),
+])
+def test_a_loanword_with_a_postposition_is_still_dropped(code, transcript, span):
+    """The content word is English; the postposition does not make it native."""
+    items = clean([alt(span, "in the meeting")], said(transcript), get_language(code))
+
+    assert items == []
+
+
+def test_the_prompt_shows_loanword_examples_in_every_language():
+    from app.providers.groq.alternatives import _prompt_for
+
+    for language in SUPPORTED_LANGUAGES:
+        prompt = _prompt_for(language)
+        assert any(word in prompt for word in language.loanwords), language.code
+
+
+def test_the_prompt_asks_for_common_words_and_bans_english_left_sides():
+    from app.providers.groq.alternatives import _prompt_for
+
+    prompt = _prompt_for(HINDI)
+
+    assert "Common words" in prompt
+    assert "Harder words" not in prompt
+    assert "Latin letters" in prompt
+    assert "learner already knows them" in prompt
+    # At least one concrete loanword is shown, so the exclusion is not left to
+    # the model's guesswork.
+    assert any(word in prompt for word in HINDI.loanwords)
 
 
 # --- storage --------------------------------------------------------------

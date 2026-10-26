@@ -24,7 +24,7 @@ export const Route = createFileRoute("/alternatives")({
       {
         name: "description",
         content:
-          "The English for the phrases and harder words you reached for in your own language.",
+          "The English for the everyday words and phrases you said in your own language.",
       },
     ],
   }),
@@ -88,8 +88,8 @@ function Alternatives() {
         </Link>
         <h1 className="mt-6 text-4xl sm:text-5xl">Say it in English</h1>
         <p className="mt-3 max-w-2xl text-muted-foreground">
-          The phrases and harder words you reached for in {name}, with the English you could use
-          next time. Everyday words are left out; you will already know those.
+          The everyday words and phrases you said in {name}, with the English you could use
+          next time. Words that are already English are left out.
         </p>
 
         {!analysis && !error && (

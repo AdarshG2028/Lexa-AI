@@ -61,6 +61,22 @@ class Settings(BaseSettings):
     deepgram_base_url: str = "https://api.deepgram.com"
     deepgram_tts_model: str = "aura-2-thalia-en"
 
+    # Sarvam speech-to-text for the bridge languages it handles better than
+    # Whisper. Hindi deliberately stays on the default provider: it was already
+    # measured as equal, and keeping the incumbent avoids changing behaviour
+    # for the language that was tested. The API key is optional; without it
+    # these languages fall back to the default provider rather than failing.
+    sarvam_api_key: str = ""
+    sarvam_base_url: str = "https://api.sarvam.ai"
+    # saaras:v4 is Sarvam's current recommended model for Indic languages.
+    sarvam_stt_model: str = "saaras:v4"
+    # "transcribe" (native script) is the mode this app needs. Left blank by
+    # default because the field is only meaningful on some model versions;
+    # setting it is safe on saaras:v3/v4 and ignored elsewhere.
+    sarvam_stt_mode: str = ""
+    # ISO 639-1 codes routed to Sarvam instead of the default STT provider.
+    sarvam_stt_languages: str = "kn,ta,te"
+
     # Phoneme model. Emits IPA directly, so no espeak backend is required.
     pronunciation_model: str = "facebook/wav2vec2-lv-60-espeak-cv-ft"
     # 0 leaves torch to decide. Setting it to the core count roughly doubles
@@ -86,6 +102,10 @@ class Settings(BaseSettings):
 
     max_upload_bytes: int = 25_000_000
     max_audio_seconds: float = 300.0
+    # Videos are much larger than a single recorded turn, so they get a
+    # separate cap. The upload is streamed to disk rather than held in memory,
+    # but the limit still bounds how much work one request can cost.
+    max_video_upload_bytes: int = 200_000_000
 
     # "database" persists conversations; "memory" keeps them only until restart.
     session_store: Literal["database", "memory"] = "database"
@@ -138,6 +158,35 @@ class Settings(BaseSettings):
             for origin in self.cors_allowed_origins.split(",")
             if origin.strip()
         ]
+
+    @property
+    def sarvam_languages(self) -> list[str]:
+        """The languages routed to Sarvam, in configuration order."""
+        return [
+            code.strip().lower()
+            for code in self.sarvam_stt_languages.split(",")
+            if code.strip()
+        ]
+
+    @property
+    def uses_sarvam(self) -> bool:
+        """True only when Sarvam will actually serve a turn.
+
+        An unconfigured key or the offline/mock mode means the routing layer
+        is never built, so no language can fail because of a missing key.
+        """
+        return bool(
+            self.sarvam_api_key
+            and self.sarvam_languages
+            and self.stt_provider != "mock"
+        )
+
+    @property
+    def stt_language_routes(self) -> dict[str, str]:
+        """Which provider each bridge language uses, for `/health`."""
+        if not self.uses_sarvam:
+            return {}
+        return {code: "sarvam" for code in self.sarvam_languages}
 
     @property
     def uses_groq(self) -> bool:
